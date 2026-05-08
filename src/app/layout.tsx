@@ -15,8 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SafeVision",
+  title: "Kubi",
   description: "Kid-friendly YouTube curation",
+};
+
+export const viewport = {
+  userScalable: false,
 };
 
 export default function RootLayout({
