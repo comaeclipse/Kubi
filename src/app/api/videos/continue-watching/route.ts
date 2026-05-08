@@ -1,0 +1,43 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { videoProgress, videos, channels } from "@/db/schema";
+import { eq, and, gt, desc } from "drizzle-orm";
+
+export async function GET(req: NextRequest) {
+  const profileId = req.nextUrl.searchParams.get("profileId");
+
+  if (!profileId) {
+    return NextResponse.json(null);
+  }
+
+  const rows = await db
+    .select({
+      youtubeVideoId: videoProgress.youtubeVideoId,
+      progressSeconds: videoProgress.progressSeconds,
+      updatedAt: videoProgress.updatedAt,
+      videoId: videos.id,
+      title: videos.title,
+      thumbnailUrl: videos.thumbnailUrl,
+      duration: videos.duration,
+      channelTitle: channels.title,
+      youtubeChannelId: channels.youtubeChannelId,
+    })
+    .from(videoProgress)
+    .innerJoin(videos, eq(videos.youtubeVideoId, videoProgress.youtubeVideoId))
+    .leftJoin(channels, eq(videos.channelId, channels.id))
+    .where(
+      and(
+        eq(videoProgress.profileId, parseInt(profileId)),
+        gt(videoProgress.progressSeconds, 0),
+        eq(videos.hidden, false)
+      )
+    )
+    .orderBy(desc(videoProgress.updatedAt))
+    .limit(1);
+
+  if (rows.length === 0) {
+    return NextResponse.json(null);
+  }
+
+  return NextResponse.json(rows[0]);
+}
