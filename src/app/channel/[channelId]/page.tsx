@@ -47,10 +47,15 @@ export default function ChannelPage() {
   const [syncing, setSyncing] = useState(false);
   const offsetRef = useRef(0);
   const loadingRef = useRef(false);
+  // Mirror of `hasMore` readable synchronously inside the scroll handler so we
+  // stop paging once the last page has loaded (otherwise scroll events + the
+  // skeleton layout shift re-fire fetches in an infinite loop).
+  const hasMoreRef = useRef(true);
 
   const fetchVideos = useCallback(
     async (newOffset: number, append: boolean) => {
       if (loadingRef.current) return;
+      if (append && !hasMoreRef.current) return;
       loadingRef.current = true;
       if (append) setLoadingMore(true);
 
@@ -64,6 +69,7 @@ export default function ChannelPage() {
 
         setVideos((prev) => (append ? [...prev, ...newVideos] : newVideos));
         setHasMore(data.hasMore ?? false);
+        hasMoreRef.current = data.hasMore ?? false;
         setTotalVideos(data.total ?? 0);
         offsetRef.current = newOffset + newVideos.length;
       } catch {
@@ -81,6 +87,7 @@ export default function ChannelPage() {
     setVideos([]);
     offsetRef.current = 0;
     setHasMore(true);
+    hasMoreRef.current = true;
 
     Promise.all([
       fetch("/api/channels").then((r) => r.json()),
@@ -101,7 +108,7 @@ export default function ChannelPage() {
   // Scroll-based infinite loading
   useEffect(() => {
     function handleScroll() {
-      if (loadingRef.current) return;
+      if (loadingRef.current || !hasMoreRef.current) return;
       const nearBottom =
         window.innerHeight + window.scrollY >=
         document.documentElement.scrollHeight - SCROLL_THRESHOLD;
@@ -127,6 +134,7 @@ export default function ChannelPage() {
       setVideos([]);
       offsetRef.current = 0;
       setHasMore(true);
+      hasMoreRef.current = true;
       fetchVideos(0, false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sync failed");
