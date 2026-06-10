@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { VideoPlayer } from "@/components/video/video-player";
+import { BunnyVideoPlayer } from "@/components/video/bunny-video-player";
 import { VideoGrid } from "@/components/video/video-grid";
 import { AddToPlaylistDialog } from "@/components/playlist/add-to-playlist-dialog";
 import { useProfile } from "@/context/profile-context";
@@ -21,6 +22,8 @@ interface Video {
   channelThumbnailUrl: string | null;
   hidden?: boolean;
   progressSeconds?: number | null;
+  source?: string | null;
+  bunnyEmbedUrl?: string | null;
 }
 
 export default function WatchPage() {
@@ -64,12 +67,25 @@ export default function WatchPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <VideoPlayer
-        youtubeVideoId={video.youtubeVideoId}
-        title={video.title}
-        startSeconds={startSeconds}
-        profileId={activeProfile?.id}
-      />
+      {video.source === "bunny" ? (
+        video.bunnyEmbedUrl ? (
+          <BunnyVideoPlayer
+            embedUrl={video.bunnyEmbedUrl}
+            title={video.title}
+          />
+        ) : (
+          <div className="flex items-center justify-center w-full aspect-video rounded-xl bg-muted text-sm text-muted-foreground">
+            This video is unavailable — its Bunny library is not configured.
+          </div>
+        )
+      ) : (
+        <VideoPlayer
+          youtubeVideoId={video.youtubeVideoId}
+          title={video.title}
+          startSeconds={startSeconds}
+          profileId={activeProfile?.id}
+        />
+      )}
       <div>
         <h1 className="text-xl font-bold">{video.title}</h1>
         <div className="flex items-center gap-3 mt-1">

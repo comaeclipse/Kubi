@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { PinGate } from "@/components/admin/pin-gate";
 import { ChannelManager } from "@/components/admin/channel-manager";
+import { BunnyChannelManager } from "@/components/admin/bunny-channel-manager";
 import { ProfileManager } from "@/components/admin/profile-manager";
 import { PlaylistManager } from "@/components/admin/playlist-manager";
 import { AdminVideoCard } from "@/components/admin/admin-video-card";
@@ -26,7 +27,11 @@ interface Channel {
   id: number;
   youtubeChannelId: string;
   title: string;
-  thumbnailUrl: string;
+  thumbnailUrl: string | null;
+  source?: string | null;
+  bunnyLibraryId?: string | null;
+  bunnyCdnHostname?: string | null;
+  bunnyCoverVideoId?: string | null;
 }
 
 interface Video {
@@ -226,6 +231,13 @@ export default function AdminPage() {
         {/* Left column — Channels & Profiles */}
         <div className="space-y-6">
           <ChannelManager channels={channels} onRefresh={handleChannelRefresh} />
+
+          <Separator />
+
+          <BunnyChannelManager
+            channels={channels}
+            onRefresh={handleChannelRefresh}
+          />
 
           <Separator />
 

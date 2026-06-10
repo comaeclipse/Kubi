@@ -12,7 +12,8 @@ interface Channel {
   id: number;
   youtubeChannelId: string;
   title: string;
-  thumbnailUrl: string;
+  thumbnailUrl: string | null;
+  source?: string | null;
 }
 
 interface ChannelManagerProps {
@@ -22,6 +23,8 @@ interface ChannelManagerProps {
 
 export function ChannelManager({ channels, onRefresh }: ChannelManagerProps) {
   const [syncingId, setSyncingId] = useState<number | null>(null);
+  // Bunny channels are managed separately in BunnyChannelManager.
+  const youtubeChannels = channels.filter((c) => c.source !== "bunny");
 
   async function handleSync(id: number) {
     setSyncingId(id);
@@ -57,19 +60,19 @@ export function ChannelManager({ channels, onRefresh }: ChannelManagerProps) {
         <AddChannelDialog onAdded={onRefresh} />
       </div>
 
-      {channels.length === 0 && (
+      {youtubeChannels.length === 0 && (
         <p className="text-sm text-muted-foreground py-4">
           No channels added yet. Click &quot;Add Channel&quot; to get started.
         </p>
       )}
 
       <div className="space-y-2">
-        {channels.map((channel) => (
+        {youtubeChannels.map((channel) => (
           <Card key={channel.id}>
             <CardContent className="flex items-center gap-3 p-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={channel.thumbnailUrl}
+                src={channel.thumbnailUrl ?? ""}
                 alt={channel.title}
                 className="h-10 w-10 rounded-full object-cover shrink-0"
                 loading="lazy"

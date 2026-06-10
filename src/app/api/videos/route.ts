@@ -3,6 +3,17 @@ import { db } from "@/db";
 import { videos, channels, videoProgress } from "@/db/schema";
 import { eq, desc, and, sql, or, ilike } from "drizzle-orm";
 
+// Bunny videos store no thumbnail in the DB — point them at the server-side
+// redirect endpoint that signs a fresh Bunny CDN thumbnail URL per request.
+function mapVideoThumbnail<
+  T extends { source?: string | null; youtubeVideoId: string; thumbnailUrl: string | null }
+>(row: T): T {
+  if (row.source === "bunny") {
+    return { ...row, thumbnailUrl: `/api/bunny/thumbnail/${row.youtubeVideoId}` };
+  }
+  return row;
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -61,6 +72,7 @@ export async function GET(request: Request) {
         duration: videos.duration,
         hidden: videos.hidden,
         isShort: videos.isShort,
+        source: videos.source,
         channelTitle: channels.title,
         channelThumbnailUrl: channels.thumbnailUrl,
         progressSeconds: videoProgress.progressSeconds,
@@ -76,7 +88,8 @@ export async function GET(request: Request) {
       query = query.limit(limit).offset(offset);
     }
 
-    const result = await query;
+    const rows = await query;
+    const result = rows.map(mapVideoThumbnail);
 
     if (limit > 0) {
       const [countResult] = await db

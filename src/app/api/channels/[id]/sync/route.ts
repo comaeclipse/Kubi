@@ -29,6 +29,13 @@ export async function POST(
       );
     }
 
+    if (!channel.uploadsPlaylistId) {
+      return NextResponse.json(
+        { error: "This channel cannot be synced" },
+        { status: 400 }
+      );
+    }
+
     // Get the newest known video to stop at
     const [newestVideo] = await db
       .select()

@@ -21,6 +21,8 @@ export async function GET(request: Request) {
   const results: { channelId: number; title: string; newVideos: number; skippedShorts: number; error?: string }[] = [];
 
   for (const channel of allChannels) {
+    // Skip manually-managed (e.g. Bunny) channels — nothing to sync.
+    if (!channel.uploadsPlaylistId) continue;
     try {
       // Get the newest known video so we only fetch what's new
       const [newestVideo] = await db

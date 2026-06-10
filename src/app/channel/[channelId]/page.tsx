@@ -13,8 +13,9 @@ interface Channel {
   id: number;
   youtubeChannelId: string;
   title: string;
-  thumbnailUrl: string;
-  uploadsPlaylistId: string;
+  thumbnailUrl: string | null;
+  uploadsPlaylistId: string | null;
+  source?: string | null;
 }
 
 interface Video {
@@ -171,6 +172,7 @@ export default function ChannelPage() {
         onSync={handleSync}
         onRemove={handleRemove}
         syncing={syncing}
+        showSync={channel.source !== "bunny"}
       />
 
       {videos.length === 0 ? (

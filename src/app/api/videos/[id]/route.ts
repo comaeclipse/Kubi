@@ -4,6 +4,17 @@ import { videos, channels, videoProgress } from "@/db/schema";
 import { eq, and, desc, ne, sql } from "drizzle-orm";
 import { isAdmin } from "@/lib/auth";
 import { extractKeywords } from "@/lib/related-videos";
+import { buildEmbedUrl, resolveLibraryId } from "@/lib/bunny";
+
+// Point Bunny videos at the signed-thumbnail redirect endpoint.
+function mapThumb<
+  T extends { source?: string | null; youtubeVideoId: string; thumbnailUrl: string | null }
+>(row: T): T {
+  if (row.source === "bunny") {
+    return { ...row, thumbnailUrl: `/api/bunny/thumbnail/${row.youtubeVideoId}` };
+  }
+  return row;
+}
 
 export async function GET(
   request: Request,
@@ -32,6 +43,9 @@ export async function GET(
         publishedAt: videos.publishedAt,
         duration: videos.duration,
         hidden: videos.hidden,
+        source: videos.source,
+        bunnyLibraryId: channels.bunnyLibraryId,
+        bunnyCdnHostname: channels.bunnyCdnHostname,
         channelTitle: channels.title,
         channelThumbnailUrl: channels.thumbnailUrl,
         progressSeconds: videoProgress.progressSeconds,
@@ -57,6 +71,7 @@ export async function GET(
         publishedAt: videos.publishedAt,
         duration: videos.duration,
         hidden: videos.hidden,
+        source: videos.source,
         channelTitle: channels.title,
         channelThumbnailUrl: channels.thumbnailUrl,
         progressSeconds: videoProgress.progressSeconds,
@@ -104,6 +119,7 @@ export async function GET(
           publishedAt: videos.publishedAt,
           duration: videos.duration,
           hidden: videos.hidden,
+          source: videos.source,
           channelTitle: channels.title,
           channelThumbnailUrl: channels.thumbnailUrl,
           progressSeconds: videoProgress.progressSeconds,
@@ -126,12 +142,23 @@ export async function GET(
       suggestedRelated = scored.map(({ score: _, ...rest }) => rest);
     }
 
+    // Build the (signed) Bunny embed URL for the main video, and rewrite Bunny
+    // thumbnails to the signing redirect endpoint.
+    let bunnyEmbedUrl: string | null = null;
+    if (video.source === "bunny") {
+      const libraryId = resolveLibraryId(video.bunnyLibraryId);
+      if (libraryId) {
+        bunnyEmbedUrl = buildEmbedUrl(libraryId, video.youtubeVideoId);
+      }
+    }
+
     return NextResponse.json({
-      video,
+      video: { ...mapThumb(video), bunnyEmbedUrl },
       related: related
         .filter((v) => v.youtubeVideoId !== video.youtubeVideoId)
-        .slice(0, 8),
-      suggestedRelated,
+        .slice(0, 8)
+        .map(mapThumb),
+      suggestedRelated: suggestedRelated.map(mapThumb),
     });
   } catch {
     return NextResponse.json(
@@ -151,18 +178,26 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const { hidden } = await request.json();
+    const body = await request.json();
 
-    if (typeof hidden !== "boolean") {
+    const updates: Partial<typeof videos.$inferInsert> = {};
+    if (typeof body.hidden === "boolean") {
+      updates.hidden = body.hidden;
+    }
+    if (typeof body.title === "string" && body.title.trim()) {
+      updates.title = body.title.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { error: "hidden must be a boolean" },
+        { error: "No valid fields to update" },
         { status: 400 }
       );
     }
 
     const [updated] = await db
       .update(videos)
-      .set({ hidden })
+      .set(updates)
       .where(eq(videos.id, parseInt(id)))
       .returning();
 
@@ -177,6 +212,45 @@ export async function PATCH(
   } catch {
     return NextResponse.json(
       { error: "Failed to update video" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const videoId = parseInt(id);
+
+    const [video] = await db
+      .select({ youtubeVideoId: videos.youtubeVideoId })
+      .from(videos)
+      .where(eq(videos.id, videoId))
+      .limit(1);
+
+    if (!video) {
+      return NextResponse.json({ error: "Video not found" }, { status: 404 });
+    }
+
+    // Clean up progress rows (no FK constraint reaches video_progress).
+    await db
+      .delete(videoProgress)
+      .where(eq(videoProgress.youtubeVideoId, video.youtubeVideoId));
+
+    // Deleting the video cascades to playlist_videos.
+    await db.delete(videos).where(eq(videos.id, videoId));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to delete video" },
       { status: 500 }
     );
   }

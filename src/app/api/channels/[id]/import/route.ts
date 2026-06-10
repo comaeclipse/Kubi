@@ -33,6 +33,13 @@ export async function POST(
       return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
 
+    if (!channel.uploadsPlaylistId) {
+      return NextResponse.json(
+        { error: "This channel cannot be imported" },
+        { status: 400 }
+      );
+    }
+
     // Fetch one page of playlist items from YouTube
     const { videos: videoList, nextPageToken } = await fetchVideoPage(
       channel.uploadsPlaylistId,
