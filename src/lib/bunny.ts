@@ -63,9 +63,21 @@ export function buildEmbedUrl(
 }
 
 /**
- * Build a (possibly signed) Bunny CDN thumbnail URL. Signs with the CDN pull
- * zone Basic token scheme when a CDN key is configured; otherwise returns the
- * plain URL. Returns null when no CDN hostname is available.
+ * Build a (possibly signed) Bunny CDN thumbnail URL.
+ *
+ * Bunny Stream pull zones protect direct files (thumbnail.jpg, playlist.m3u8,
+ * preview.webp, …) with **directory token authentication**. The token covers a
+ * directory (token_path = "/{videoId}/") and is carried as a path prefix, not a
+ * query string:
+ *
+ *   https://{host}/bcdn_token={token}&expires={exp}&token_path={enc}/{videoId}/thumbnail.jpg
+ *
+ *   token = base64url( sha256( key + token_path + expires + "token_path=" + token_path ) )
+ *
+ * The signing key is the library's Token Authentication key — the same value
+ * used for the embed token — so BUNNY_STREAM_TOKEN_SECURITY_KEY works here too
+ * (BUNNY_CDN_TOKEN_SECURITY_KEY overrides it if set). Returns an unsigned URL
+ * when no key is configured, and null when no CDN hostname is available.
  */
 export function buildThumbnailUrl(
   cdnHostname: string | null | undefined,
@@ -75,21 +87,24 @@ export function buildThumbnailUrl(
   const host = cdnHostname || DEFAULT_CDN_HOSTNAME;
   if (!host) return null;
 
-  const path = `/${videoId}/thumbnail.jpg`;
-  const base = `https://${host}${path}`;
+  const file = `/${videoId}/thumbnail.jpg`;
+  const key = CDN_KEY || EMBED_KEY;
+  if (!key) return `https://${host}${file}`;
 
-  if (!CDN_KEY) return base;
-
+  const tokenPath = `/${videoId}/`;
   const expires = unixExpires(ttlSeconds);
   const token = crypto
-    .createHash("md5")
-    .update(CDN_KEY + path + expires)
+    .createHash("sha256")
+    .update(key + tokenPath + expires + "token_path=" + tokenPath)
     .digest("base64")
+    .replace(/\n/g, "")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=/g, "");
 
-  return `${base}?token=${token}&expires=${expires}`;
+  return `https://${host}/bcdn_token=${token}&expires=${expires}&token_path=${encodeURIComponent(
+    tokenPath
+  )}${file}`;
 }
 
 /** Resolve the effective library id for a Bunny channel row. */
