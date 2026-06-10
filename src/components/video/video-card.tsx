@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { Film } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { formatDuration, isoToSeconds } from "@/lib/youtube";
@@ -28,6 +30,7 @@ export function VideoCard({
   youtubeChannelId,
   progressSeconds,
 }: VideoCardProps) {
+  const [imgError, setImgError] = useState(false);
   const formattedDuration = formatDuration(duration);
   const timeAgo = getTimeAgo(publishedAt);
   const totalSeconds = duration ? isoToSeconds(duration) : 0;
@@ -39,13 +42,20 @@ export function VideoCard({
   return (
     <Link href={`/watch/${youtubeVideoId}`} className="group block">
       <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={thumbnailUrl}
-          alt={title}
-          className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
-          loading="lazy"
-        />
+        {thumbnailUrl && !imgError ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={thumbnailUrl}
+            alt={title}
+            className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Film className="h-8 w-8 text-muted-foreground/40" />
+          </div>
+        )}
         {formattedDuration && (
           <Badge
             variant="secondary"

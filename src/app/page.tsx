@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 import { VideoGrid } from "@/components/video/video-grid";
 import { VideoCard } from "@/components/video/video-card";
+import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Clock, Shuffle, RefreshCw } from "lucide-react";
@@ -97,12 +98,10 @@ function HomeContent() {
             className="py-4"
           >
             <div className="flex items-center gap-3 mb-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={spotlight.channelThumbnailUrl}
-                alt={spotlight.channelTitle}
-                className="h-8 w-8 rounded-full object-cover shrink-0"
-                loading="lazy"
+              <ChannelAvatar
+                title={spotlight.channelTitle ?? ""}
+                thumbnailUrl={spotlight.channelThumbnailUrl}
+                className="h-8 w-8 rounded-full shrink-0 text-sm"
               />
               <Link
                 href={`/channel/${spotlight.channelId}`}
