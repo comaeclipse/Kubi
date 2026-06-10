@@ -22,6 +22,7 @@ import crypto from "crypto";
 
 const EMBED_KEY = process.env.BUNNY_STREAM_TOKEN_SECURITY_KEY;
 const CDN_KEY = process.env.BUNNY_CDN_TOKEN_SECURITY_KEY;
+const STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 
 export const DEFAULT_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 export const DEFAULT_CDN_HOSTNAME = process.env.BUNNY_STREAM_CDN_HOSTNAME;
@@ -96,4 +97,75 @@ export function resolveLibraryId(
   channelLibraryId: string | null | undefined
 ): string | null {
   return channelLibraryId || DEFAULT_LIBRARY_ID || null;
+}
+
+/** Convert a duration in seconds to an ISO-8601 string (PT#H#M#S) so the
+ *  existing formatDuration/isoToSeconds helpers in lib/youtube.ts work. */
+export function secondsToIso8601(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const hPart = h ? `${h}H` : "";
+  const mPart = m ? `${m}M` : "";
+  // Always emit a seconds part when there are no hours/minutes (e.g. PT0S).
+  const sPart = sec || (!h && !m) ? `${sec}S` : "";
+  return `PT${hPart}${mPart}${sPart}`;
+}
+
+export interface BunnyLibraryVideo {
+  guid: string;
+  title: string;
+  lengthSeconds: number;
+  status: number; // 4 = finished/ready
+  dateUploaded: string;
+}
+
+/** List all videos in a Bunny Stream library via the management API
+ *  (paginated). Requires BUNNY_STREAM_API_KEY. */
+export async function listLibraryVideos(
+  libraryId: string
+): Promise<BunnyLibraryVideo[]> {
+  if (!STREAM_API_KEY) {
+    throw new Error("BUNNY_STREAM_API_KEY is not configured");
+  }
+
+  const perPage = 100;
+  let page = 1;
+  const out: BunnyLibraryVideo[] = [];
+
+  for (;;) {
+    const res = await fetch(
+      `https://video.bunnycdn.com/library/${libraryId}/videos?page=${page}&itemsPerPage=${perPage}&orderBy=date`,
+      {
+        headers: { AccessKey: STREAM_API_KEY, accept: "application/json" },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) {
+      throw new Error(`Bunny API error (${res.status})`);
+    }
+
+    const data = await res.json();
+    const items: unknown[] = Array.isArray(data.items) ? data.items : [];
+    for (const raw of items) {
+      const v = raw as Record<string, unknown>;
+      out.push({
+        guid: String(v.guid),
+        title: typeof v.title === "string" && v.title ? v.title : "(untitled)",
+        lengthSeconds: typeof v.length === "number" ? v.length : 0,
+        status: typeof v.status === "number" ? v.status : 0,
+        dateUploaded:
+          typeof v.dateUploaded === "string"
+            ? v.dateUploaded
+            : new Date().toISOString(),
+      });
+    }
+
+    const total = typeof data.totalItems === "number" ? data.totalItems : out.length;
+    if (items.length === 0 || out.length >= total) break;
+    page++;
+  }
+
+  return out;
 }

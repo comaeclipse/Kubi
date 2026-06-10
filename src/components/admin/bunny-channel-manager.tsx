@@ -12,8 +12,33 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Pencil, Plus, Trash2, Video, ImageIcon, Loader2 } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  Trash2,
+  Video,
+  ImageIcon,
+  Loader2,
+  DownloadCloud,
+} from "lucide-react";
 import { toast } from "sonner";
+
+function formatSeconds(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+interface BunnyLibraryVideo {
+  guid: string;
+  title: string;
+  lengthSeconds: number;
+  status: number;
+  imported: boolean;
+}
 
 interface Channel {
   id: number;
@@ -286,6 +311,7 @@ function ManageVideosDialog({
   const [bunnyVideoId, setBunnyVideoId] = useState("");
   const [title, setTitle] = useState("");
   const [adding, setAdding] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const loadVideos = useCallback(async () => {
     setLoading(true);
@@ -385,6 +411,22 @@ function ManageVideosDialog({
           <DialogTitle>Manage videos — {channel.title}</DialogTitle>
         </DialogHeader>
 
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => setImportOpen(true)}
+        >
+          <DownloadCloud className="h-4 w-4 mr-1.5" />
+          Import from Bunny library
+        </Button>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" />
+          or add manually
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
         <form onSubmit={handleAdd} className="space-y-2">
           <Input
             placeholder="Bunny video ID (GUID)"
@@ -456,6 +498,185 @@ function ManageVideosDialog({
             ))
           )}
         </div>
+      </DialogContent>
+
+      <ImportFromBunnyDialog
+        channelId={channel.id}
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          setImportOpen(false);
+          loadVideos();
+          onChannelChanged();
+        }}
+      />
+    </Dialog>
+  );
+}
+
+function ImportFromBunnyDialog({
+  channelId,
+  open,
+  onClose,
+  onImported,
+}: {
+  channelId: number;
+  open: boolean;
+  onClose: () => void;
+  onImported: () => void;
+}) {
+  const [videos, setVideos] = useState<BunnyLibraryVideo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setSelected(new Set());
+    try {
+      const res = await fetch(`/api/channels/${channelId}/bunny-library`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setVideos(data.videos ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load library");
+    } finally {
+      setLoading(false);
+    }
+  }, [channelId]);
+
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
+
+  // A video can be selected only if it's ready (status 4) and not yet imported.
+  const selectable = videos.filter((v) => v.status === 4 && !v.imported);
+  const allSelected =
+    selectable.length > 0 && selectable.every((v) => selected.has(v.guid));
+
+  function toggle(guid: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(guid)) next.delete(guid);
+      else next.add(guid);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(selectable.map((v) => v.guid)));
+  }
+
+  async function handleImport() {
+    if (selected.size === 0) return;
+    setImporting(true);
+    try {
+      const res = await fetch(`/api/channels/${channelId}/videos/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guids: Array.from(selected) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(`Imported ${data.imported} video(s)`);
+      onImported();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Import from Bunny library</DialogTitle>
+        </DialogHeader>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Loading library…
+          </p>
+        ) : error ? (
+          <p className="text-sm text-destructive py-4">{error}</p>
+        ) : videos.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">
+            No videos found in this library.
+          </p>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={toggleAll}
+              disabled={selectable.length === 0}
+              className="text-sm text-left text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+            >
+              {allSelected ? "Deselect all" : `Select all (${selectable.length})`}
+            </button>
+
+            <div className="max-h-[50vh] overflow-y-auto space-y-1.5 pr-1">
+              {videos.map((v) => {
+                const isSelectable = v.status === 4 && !v.imported;
+                return (
+                  <label
+                    key={v.guid}
+                    className={`flex items-center gap-3 rounded-md border p-2 ${
+                      isSelectable
+                        ? "cursor-pointer hover:bg-accent"
+                        : "opacity-60"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 shrink-0 accent-primary"
+                      checked={selected.has(v.guid)}
+                      disabled={!isSelectable}
+                      onChange={() => toggle(v.guid)}
+                    />
+                    <span className="flex-1 text-sm font-medium line-clamp-2">
+                      {v.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums shrink-0">
+                      {v.imported
+                        ? "Imported"
+                        : v.status !== 4
+                          ? "Processing…"
+                          : formatSeconds(v.lengthSeconds)}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={importing}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleImport}
+                disabled={importing || selected.size === 0}
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    Importing…
+                  </>
+                ) : (
+                  `Import ${selected.size || ""}`.trim()
+                )}
+              </Button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
