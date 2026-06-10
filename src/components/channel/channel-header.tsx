@@ -2,6 +2,7 @@
 
 
 import { Button } from "@/components/ui/button";
+import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { RefreshCw, Trash2 } from "lucide-react";
 
 interface ChannelHeaderProps {
@@ -30,16 +31,11 @@ export function ChannelHeader({
   return (
     <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-full overflow-hidden bg-muted shrink-0">
-          {thumbnailUrl ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={thumbnailUrl} alt={title} className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <span className="absolute inset-0 flex items-center justify-center text-lg font-semibold text-muted-foreground">
-              {title.charAt(0).toUpperCase()}
-            </span>
-          )}
-        </div>
+        <ChannelAvatar
+          title={title}
+          thumbnailUrl={thumbnailUrl}
+          className="h-12 w-12 sm:h-16 sm:w-16 rounded-full shrink-0 text-lg sm:text-2xl"
+        />
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold line-clamp-2">{title}</h1>
           <p className="text-sm text-muted-foreground">

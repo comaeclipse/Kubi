@@ -12,6 +12,7 @@ import {
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { Home, Shield, ListMusic, History } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ interface Channel {
   id: number;
   youtubeChannelId: string;
   title: string;
-  thumbnailUrl: string;
+  thumbnailUrl: string | null;
 }
 
 interface Playlist {
@@ -99,12 +100,10 @@ export function AppSidebar() {
                     title={channel.title}
                     className="justify-center"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={channel.thumbnailUrl}
-                      alt={channel.title}
-                      className="h-16 w-16 flex-none rounded-full object-cover"
-                      loading="lazy"
+                    <ChannelAvatar
+                      title={channel.title}
+                      thumbnailUrl={channel.thumbnailUrl}
+                      className="h-16 w-16 flex-none rounded-full text-2xl"
                     />
                   </Link>
                 </SidebarMenuButton>

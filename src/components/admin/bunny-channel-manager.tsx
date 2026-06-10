@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import {
   Dialog,
   DialogContent,
@@ -119,21 +120,11 @@ export function BunnyChannelManager({
         {bunnyChannels.map((channel) => (
           <Card key={channel.id}>
             <CardContent className="flex items-center gap-3 p-3">
-              <div className="h-10 w-10 rounded-full overflow-hidden bg-muted shrink-0 flex items-center justify-center">
-                {channel.thumbnailUrl ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={channel.thumbnailUrl}
-                    alt={channel.title}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="text-sm font-semibold text-muted-foreground">
-                    {channel.title.charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
+              <ChannelAvatar
+                title={channel.title}
+                thumbnailUrl={channel.thumbnailUrl}
+                className="h-10 w-10 rounded-full shrink-0 text-sm"
+              />
               <span className="flex-1 font-medium truncate">
                 {channel.title}
               </span>
