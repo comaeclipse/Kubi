@@ -25,9 +25,11 @@ export async function GET(
     return NextResponse.json({ error: "No thumbnail available" }, { status: 404 });
   }
 
-  // 307 keeps it a GET; short cache so the signed URL can be refreshed.
+  // 307 keeps it a GET. The signed URL is bucketed (stable for hours), so we can
+  // cache the redirect in the browser and at the Vercel edge (s-maxage) — this
+  // cuts repeat DB lookups + signing and lets the browser reuse the cached image.
   return NextResponse.redirect(url, {
     status: 307,
-    headers: { "Cache-Control": "public, max-age=600" },
+    headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600" },
   });
 }

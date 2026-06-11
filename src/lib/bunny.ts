@@ -33,6 +33,17 @@ function unixExpires(ttlSeconds: number): number {
   return Math.floor(Date.now() / 1000) + ttlSeconds;
 }
 
+// Thumbnails rarely change, so we quantize their expiry to a time window: every
+// request within the same window produces an identical signed URL, letting the
+// browser/CDN cache the image instead of re-downloading it each time the token
+// rotates. The URL stays valid between THUMB_WINDOW and 2×THUMB_WINDOW.
+const THUMB_WINDOW_SECONDS = 6 * 60 * 60;
+
+function bucketedExpires(windowSeconds: number): number {
+  const now = Math.floor(Date.now() / 1000);
+  return (Math.floor(now / windowSeconds) + 2) * windowSeconds;
+}
+
 /**
  * Build a signed Bunny Stream embed URL for the iframe player. Falls back to an
  * unsigned URL when no embed token key is configured (i.e. the library has
@@ -76,13 +87,13 @@ export function buildEmbedUrl(
  *
  * The signing key is the library's Token Authentication key — the same value
  * used for the embed token — so BUNNY_STREAM_TOKEN_SECURITY_KEY works here too
- * (BUNNY_CDN_TOKEN_SECURITY_KEY overrides it if set). Returns an unsigned URL
- * when no key is configured, and null when no CDN hostname is available.
+ * (BUNNY_CDN_TOKEN_SECURITY_KEY overrides it if set). The expiry is bucketed
+ * (see THUMB_WINDOW_SECONDS) so the URL is stable and cacheable. Returns an
+ * unsigned URL when no key is configured, and null when no CDN hostname exists.
  */
 export function buildThumbnailUrl(
   cdnHostname: string | null | undefined,
-  videoId: string,
-  ttlSeconds: number = DEFAULT_TTL_SECONDS
+  videoId: string
 ): string | null {
   const host = cdnHostname || DEFAULT_CDN_HOSTNAME;
   if (!host) return null;
@@ -92,7 +103,7 @@ export function buildThumbnailUrl(
   if (!key) return `https://${host}${file}`;
 
   const tokenPath = `/${videoId}/`;
-  const expires = unixExpires(ttlSeconds);
+  const expires = bucketedExpires(THUMB_WINDOW_SECONDS);
   const token = crypto
     .createHash("sha256")
     .update(key + tokenPath + expires + "token_path=" + tokenPath)
