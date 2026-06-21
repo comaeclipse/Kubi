@@ -1,14 +1,14 @@
-# SafeVision
+# Kubi
 
 **A parent-controlled video frontend for kids.**
 
-SafeVision is for parents who are tired of the lack of real parental controls on YouTube. Instead of handing a child the open YouTube app — with its endless autoplay, algorithmic rabbit holes, and unvetted recommendations — SafeVision lets you build a walled garden of *only* the channels and videos you've personally approved.
+Kubi is for parents who are tired of the lack of real parental controls on YouTube. Instead of handing a child the open YouTube app — with its endless autoplay, algorithmic rabbit holes, and unvetted recommendations — Kubi lets you build a walled garden of *only* the channels and videos you've personally approved.
 
 It's a custom frontend: your child sees a clean, kid-friendly interface containing nothing but the content you curate. There are no ads, no comments, no "up next" surprises, and no way to wander off into the wider internet.
 
 ## What it does
 
-- **Curate by channel** — Add YouTube channels by ID; SafeVision pulls in their videos so your kids can browse them in a safe shell.
+- **Curate by channel** — Add YouTube channels by ID; Kubi pulls in their videos so your kids can browse them in a safe shell.
 - **Hide individual videos** — Approve a channel but veto specific videos you don't want shown.
 - **Self-hosted video** — Add your own videos as "channels" via [Bunny Stream](https://bunny.net/) (e.g. home movies, downloaded content) alongside YouTube channels.
 - **Kid profiles** — Separate, colorful profiles per child, each with its own watch history and playlists.
