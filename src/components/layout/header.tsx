@@ -13,10 +13,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Users, Search, X, Settings, LogOut, UserCircle } from "lucide-react";
+import { Users, Search, X, Settings, LogOut, UserCircle, CreditCard } from "lucide-react";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
+import { toast } from "sonner";
+
+function trialDaysLeft(trialEndsAt: string | null): number | null {
+  if (!trialEndsAt) return null;
+  const ms = new Date(trialEndsAt).getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (1000 * 60 * 60 * 24));
+}
 
 function SearchBar() {
   const router = useRouter();
@@ -65,6 +73,20 @@ export function Header() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
   }
+
+  async function handleManageBilling() {
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      window.location.href = data.url;
+    } catch {
+      toast.error("Could not open billing portal");
+    }
+  }
+
+  const daysLeft = user ? trialDaysLeft(user.trialEndsAt) : null;
+  const isOnTrial = daysLeft !== null && !user?.subscriptionId;
 
   return (
     <header className="flex items-center gap-2 border-b px-4 h-14 shrink-0">
@@ -131,6 +153,11 @@ export function Header() {
               <div className="px-2 py-1.5 text-xs text-muted-foreground truncate">
                 {user.email}
               </div>
+              {isOnTrial && (
+                <div className="px-2 py-1 text-xs text-amber-600 font-medium">
+                  {daysLeft === 0 ? "Trial ending today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left in trial`}
+                </div>
+              )}
               <DropdownMenuSeparator />
             </>
           )}
@@ -146,6 +173,20 @@ export function Header() {
                 <Settings className="h-4 w-4" />
                 Manage
               </Link>
+            </DropdownMenuItem>
+          )}
+          {isOnTrial && (
+            <DropdownMenuItem asChild className="gap-2">
+              <Link href="/subscribe">
+                <CreditCard className="h-4 w-4" />
+                Subscribe
+              </Link>
+            </DropdownMenuItem>
+          )}
+          {user?.subscriptionId && (
+            <DropdownMenuItem onClick={handleManageBilling} className="gap-2">
+              <CreditCard className="h-4 w-4" />
+              Manage billing
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />

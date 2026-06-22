@@ -15,6 +15,12 @@ export type AuthUser = {
   emailVerified: boolean;
   isOperator: boolean;
   onboarded: boolean;
+  stripeCustomerId: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+  trialEndsAt: string | null; // ISO string from JSON
+  currentPeriodEndsAt: string | null;
+  hasAccess: boolean;
 };
 
 interface AuthContextValue {

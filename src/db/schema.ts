@@ -27,6 +27,14 @@ export const users = pgTable("users", {
   // the onboarding modal exactly once.
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Subscription
+  stripeCustomerId: text("stripe_customer_id"),
+  subscriptionId: text("subscription_id"),
+  // Stripe subscription status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete'
+  subscriptionStatus: text("subscription_status"),
+  // Set to createdAt + 14 days on registration; access is granted while this is in the future.
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  currentPeriodEndsAt: timestamp("current_period_ends_at", { withTimezone: true }),
 });
 
 // Server-side sessions (revocable). The cookie stores the opaque `token`.
