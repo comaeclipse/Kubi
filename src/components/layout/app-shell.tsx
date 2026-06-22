@@ -18,6 +18,7 @@ const BARE_PREFIXES = [
   "/forgot-password",
   "/reset-password",
   "/subscribe",
+  "/invite",
 ];
 
 function AppContent({ children }: { children: ReactNode }) {
