@@ -19,6 +19,9 @@ export const users = pgTable("users", {
   emailVerified: boolean("email_verified").notNull().default(false),
   // Operators curate the master channel library; regular parents only toggle.
   isOperator: boolean("is_operator").notNull().default(false),
+  // Null until the parent completes the first-run channel picker. Used to show
+  // the onboarding modal exactly once.
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

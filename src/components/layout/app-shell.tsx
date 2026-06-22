@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { ProfileProvider, useProfile } from "@/context/profile-context";
 import { ProfilePicker } from "@/components/profile/profile-picker";
 import { AuthProvider } from "@/context/auth-context";
+import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
 
 // Routes that render bare (no sidebar/profile chrome): the auth flow.
 const BARE_PREFIXES = [
@@ -30,7 +31,12 @@ function AppContent({ children }: { children: ReactNode }) {
   }
 
   if (!activeProfile && profiles.length > 0) {
-    return <ProfilePicker />;
+    return (
+      <>
+        <ProfilePicker />
+        <OnboardingDialog />
+      </>
+    );
   }
 
   return (
@@ -40,6 +46,7 @@ function AppContent({ children }: { children: ReactNode }) {
         <Header />
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
+      <OnboardingDialog />
     </SidebarProvider>
   );
 }

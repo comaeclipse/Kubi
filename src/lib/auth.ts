@@ -14,6 +14,8 @@ export type CurrentUser = {
   email: string;
   emailVerified: boolean;
   isOperator: boolean;
+  // False until the parent finishes the first-run channel picker.
+  onboarded: boolean;
 };
 
 export async function hashPassword(password: string): Promise<string> {
@@ -59,6 +61,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       email: users.email,
       emailVerified: users.emailVerified,
       isOperator: users.isOperator,
+      onboardedAt: users.onboardedAt,
       expiresAt: sessions.expiresAt,
     })
     .from(sessions)
@@ -76,6 +79,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     email: decrypt(row.email),
     emailVerified: row.emailVerified,
     isOperator: row.isOperator,
+    onboarded: row.onboardedAt !== null,
   };
 }
 

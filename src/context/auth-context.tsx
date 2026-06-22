@@ -14,6 +14,7 @@ export type AuthUser = {
   email: string;
   emailVerified: boolean;
   isOperator: boolean;
+  onboarded: boolean;
 };
 
 interface AuthContextValue {
