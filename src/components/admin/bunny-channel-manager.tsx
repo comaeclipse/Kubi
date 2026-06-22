@@ -23,6 +23,8 @@ import {
   DownloadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
+import { LabelPicker } from "@/components/admin/label-picker";
+import type { Label } from "@/lib/taxonomy";
 
 function formatSeconds(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -50,6 +52,7 @@ interface Channel {
   bunnyLibraryId?: string | null;
   bunnyCdnHostname?: string | null;
   bunnyCoverVideoId?: string | null;
+  labels?: Label[];
 }
 
 interface BunnyVideo {
@@ -62,11 +65,13 @@ interface BunnyVideo {
 interface BunnyChannelManagerProps {
   channels: Channel[];
   onRefresh: () => void;
+  labels: Label[];
 }
 
 export function BunnyChannelManager({
   channels,
   onRefresh,
+  labels,
 }: BunnyChannelManagerProps) {
   const bunnyChannels = channels.filter((c) => c.source === "bunny");
   const [managing, setManaging] = useState<Channel | null>(null);
@@ -128,6 +133,22 @@ export function BunnyChannelManager({
               <span className="flex-1 font-medium truncate">
                 {channel.title}
               </span>
+              <LabelPicker
+                labels={labels}
+                assigned={channel.labels ?? []}
+                compact
+                onSave={async (labelIds) => {
+                  const response = await fetch(`/api/channels/${channel.id}/labels`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ labelIds }),
+                  });
+                  if (!response.ok) throw new Error();
+                  const updated = await response.json();
+                  onRefresh();
+                  return updated;
+                }}
+              />
               <Button
                 variant="outline"
                 size="sm"

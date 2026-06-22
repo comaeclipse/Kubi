@@ -6,7 +6,11 @@ import {
   boolean,
   timestamp,
   primaryKey,
+  index,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Registered accounts (parents). Personal fields are encrypted at rest:
 // `email` holds AES-256-GCM ciphertext, `emailHash` is an HMAC blind index used
@@ -101,6 +105,58 @@ export const videos = pgTable("videos", {
   source: text("source").notNull().default("youtube"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const labels = pgTable(
+  "labels",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugUnique: uniqueIndex("labels_slug_unique").on(table.slug),
+    kindCheck: check(
+      "labels_kind_check",
+      sql`${table.kind} IN ('category', 'tag')`
+    ),
+  })
+);
+
+export const channelLabels = pgTable(
+  "channel_labels",
+  {
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    labelId: integer("label_id")
+      .notNull()
+      .references(() => labels.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.channelId, table.labelId] }),
+    labelIdx: index("channel_labels_label_id_idx").on(table.labelId),
+  })
+);
+
+export const videoLabels = pgTable(
+  "video_labels",
+  {
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    labelId: integer("label_id")
+      .notNull()
+      .references(() => labels.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.videoId, table.labelId] }),
+    labelIdx: index("video_labels_label_id_idx").on(table.labelId),
+  })
+);
 
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),

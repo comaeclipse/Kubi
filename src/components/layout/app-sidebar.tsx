@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
-import { Home, Shield, ListMusic, History } from "lucide-react";
+import { Home, Shield, ListMusic, History, Music2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useProfile } from "@/context/profile-context";
@@ -77,6 +77,14 @@ export function AppSidebar() {
               <Link href="/recently-watched">
                 <History className="h-4 w-4" />
                 <span>Recently Watched</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname === "/music"}>
+              <Link href="/music">
+                <Music2 className="h-4 w-4" />
+                <span>Music</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

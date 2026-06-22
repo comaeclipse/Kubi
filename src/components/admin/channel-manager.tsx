@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AddChannelDialog } from "@/components/channel/add-channel-dialog";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { LabelPicker } from "@/components/admin/label-picker";
+import type { Label } from "@/lib/taxonomy";
 
 interface Channel {
   id: number;
@@ -14,14 +16,16 @@ interface Channel {
   title: string;
   thumbnailUrl: string | null;
   source?: string | null;
+  labels?: Label[];
 }
 
 interface ChannelManagerProps {
   channels: Channel[];
   onRefresh: () => void;
+  labels: Label[];
 }
 
-export function ChannelManager({ channels, onRefresh }: ChannelManagerProps) {
+export function ChannelManager({ channels, onRefresh, labels }: ChannelManagerProps) {
   const [syncingId, setSyncingId] = useState<number | null>(null);
   // Bunny channels are managed separately in BunnyChannelManager.
   const youtubeChannels = channels.filter((c) => c.source !== "bunny");
@@ -80,6 +84,22 @@ export function ChannelManager({ channels, onRefresh }: ChannelManagerProps) {
               <span className="flex-1 font-medium truncate">
                 {channel.title}
               </span>
+              <LabelPicker
+                labels={labels}
+                assigned={channel.labels ?? []}
+                compact
+                onSave={async (labelIds) => {
+                  const response = await fetch(`/api/channels/${channel.id}/labels`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ labelIds }),
+                  });
+                  if (!response.ok) throw new Error();
+                  const updated = await response.json();
+                  onRefresh();
+                  return updated;
+                }}
+              />
               <Button
                 variant="outline"
                 size="icon"

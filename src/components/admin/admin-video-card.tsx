@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { formatDuration } from "@/lib/youtube";
+import { LabelPicker } from "@/components/admin/label-picker";
+import type { Label } from "@/lib/taxonomy";
 
 interface AdminVideoCardProps {
   id: number;
@@ -14,6 +16,9 @@ interface AdminVideoCardProps {
   duration: string | null;
   hidden: boolean;
   onToggleHidden: (id: number, hidden: boolean) => void;
+  labels: Label[];
+  assignedLabels?: Label[];
+  onLabelsChanged: () => void;
 }
 
 export function AdminVideoCard({
@@ -23,6 +28,9 @@ export function AdminVideoCard({
   duration,
   hidden,
   onToggleHidden,
+  labels,
+  assignedLabels = [],
+  onLabelsChanged,
 }: AdminVideoCardProps) {
   const formattedDuration = formatDuration(duration);
 
@@ -50,6 +58,22 @@ export function AdminVideoCard({
           {title}
         </span>
         <div className="flex items-center gap-2 shrink-0">
+          <LabelPicker
+            labels={labels}
+            assigned={assignedLabels}
+            compact
+            onSave={async (labelIds) => {
+              const response = await fetch(`/api/videos/${id}/labels`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ labelIds }),
+              });
+              if (!response.ok) throw new Error();
+              const updated = await response.json();
+              onLabelsChanged();
+              return updated;
+            }}
+          />
           <span className="text-xs text-muted-foreground">
             {hidden ? "Hidden" : "Visible"}
           </span>

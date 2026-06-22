@@ -9,6 +9,7 @@ import {
   fetchChannelInfo,
 } from "@/lib/youtube";
 import { DEFAULT_CDN_HOSTNAME, DEFAULT_LIBRARY_ID } from "@/lib/bunny";
+import { getChannelLabelMap } from "@/lib/taxonomy";
 
 // GET /api/channels        -> channels this account has enabled (kid-facing)
 // GET /api/channels?all=1  -> the full master library annotated with `enabled`
@@ -30,12 +31,19 @@ export async function GET(request: Request) {
       .from(userChannels)
       .where(eq(userChannels.userId, auth.id));
     const enabledIds = new Set(enabledRows.map((r) => r.channelId));
+    const labelMap =
+      auth.isOperator && all
+        ? await getChannelLabelMap(allChannels.map((channel) => channel.id))
+        : new Map();
 
     const withCovers = allChannels
       .filter((ch) => all || enabledIds.has(ch.id))
       .map((ch) => ({
         ...ch,
         enabled: enabledIds.has(ch.id),
+        ...(auth.isOperator && all
+          ? { labels: labelMap.get(ch.id) ?? [] }
+          : {}),
         // For Bunny channels, expose the cover as a (server-signed) thumbnail
         // URL derived from the chosen cover video.
         thumbnailUrl:

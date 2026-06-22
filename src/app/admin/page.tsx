@@ -23,6 +23,8 @@ import { Scan, ChevronDown, ChevronRight } from "lucide-react";
 import { CronStatus } from "@/components/admin/cron-status";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
+import { TaxonomyManager } from "@/components/admin/taxonomy-manager";
+import type { Label } from "@/lib/taxonomy";
 
 interface Channel {
   id: number;
@@ -33,6 +35,7 @@ interface Channel {
   bunnyLibraryId?: string | null;
   bunnyCdnHostname?: string | null;
   bunnyCoverVideoId?: string | null;
+  labels?: Label[];
 }
 
 interface Video {
@@ -46,6 +49,7 @@ interface Video {
   isShort: boolean;
   channelId: number;
   channelTitle: string | null;
+  labels?: Label[];
 }
 
 export default function AdminPage() {
@@ -61,6 +65,16 @@ export default function AdminPage() {
   const [shortsExpanded, setShortsExpanded] = useState(false);
   const [adminProfiles, setAdminProfiles] = useState<{ id: number; name: string; avatarColor: string }[]>([]);
   const [sharedPlaylists, setSharedPlaylists] = useState<{ id: number; name: string; profileId: number | null; videoCount: number }[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
+
+  const loadLabels = useCallback(async () => {
+    try {
+      const data = await fetch("/api/labels").then((response) => response.json());
+      setLabels(Array.isArray(data) ? data : []);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const loadPlaylists = useCallback(async () => {
     try {
@@ -138,8 +152,9 @@ export default function AdminPage() {
     if (isOperator) {
       loadChannels();
       loadPlaylists();
+      loadLabels();
     }
-  }, [user, isOperator, loadChannels, loadProfiles, loadPlaylists]);
+  }, [user, isOperator, loadChannels, loadProfiles, loadPlaylists, loadLabels]);
 
   // Fetch videos whenever the selected channel changes (operator only).
   useEffect(() => {
@@ -228,15 +243,24 @@ export default function AdminPage() {
             account to enable.
           </p>
 
+          <TaxonomyManager labels={labels} onRefresh={loadLabels} />
+
+          <Separator />
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Left column — Channels */}
         <div className="space-y-6">
-          <ChannelManager channels={channels} onRefresh={handleChannelRefresh} />
+          <ChannelManager
+            channels={channels}
+            labels={labels}
+            onRefresh={handleChannelRefresh}
+          />
 
           <Separator />
 
           <BunnyChannelManager
             channels={channels}
+            labels={labels}
             onRefresh={handleChannelRefresh}
           />
 
@@ -330,6 +354,9 @@ export default function AdminPage() {
                         <AdminVideoCard
                           key={video.id}
                           {...video}
+                          labels={labels}
+                          assignedLabels={video.labels}
+                          onLabelsChanged={() => loadVideos(selectedChannel)}
                           onToggleHidden={handleToggleHidden}
                         />
                       ))}
@@ -349,6 +376,9 @@ export default function AdminPage() {
                     <AdminVideoCard
                       key={video.id}
                       {...video}
+                      labels={labels}
+                      assignedLabels={video.labels}
+                      onLabelsChanged={() => loadVideos(selectedChannel)}
                       onToggleHidden={handleToggleHidden}
                     />
                   ))

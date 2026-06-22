@@ -43,11 +43,13 @@ export async function POST(
       .orderBy(desc(videos.publishedAt))
       .limit(1);
 
-    const stopAtVideoId = newestVideo?.youtubeVideoId;
+    const knownVideoIds = newestVideo
+      ? new Set([newestVideo.youtubeVideoId])
+      : undefined;
 
     const newVideos = await fetchAllVideos(
       channel.uploadsPlaylistId,
-      stopAtVideoId
+      knownVideoIds
     );
 
     if (newVideos.length > 0) {

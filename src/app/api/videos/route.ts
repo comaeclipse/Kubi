@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { videos, channels, videoProgress, userChannels } from "@/db/schema";
 import { eq, desc, and, sql, or, ilike, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
+import { getVideoLabelMap } from "@/lib/taxonomy";
 
 // Bunny videos store no thumbnail in the DB — point them at the server-side
 // redirect endpoint that signs a fresh Bunny CDN thumbnail URL per request.
@@ -109,7 +110,13 @@ export async function GET(request: Request) {
     }
 
     const rows = await query;
-    const result = rows.map(mapVideoThumbnail);
+    const labelMap = auth.isOperator
+      ? await getVideoLabelMap(rows.map((row) => row.id))
+      : new Map();
+    const result = rows.map((row) => ({
+      ...mapVideoThumbnail(row),
+      ...(auth.isOperator ? { labels: labelMap.get(row.id) ?? [] } : {}),
+    }));
 
     if (limit > 0) {
       const [countResult] = await db
