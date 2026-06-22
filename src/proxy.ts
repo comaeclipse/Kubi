@@ -9,6 +9,9 @@ const AUTH_PAGES = [
   "/verify-email",
   "/forgot-password",
   "/reset-password",
+  // Invite links must be reachable without a session — the page itself
+  // forwards valid invites on to /register.
+  "/invite",
 ];
 
 export function proxy(request: NextRequest) {
