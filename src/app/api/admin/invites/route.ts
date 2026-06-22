@@ -52,10 +52,11 @@ export async function POST(request: Request) {
 
     const code = newInviteCode();
 
-    const [created] = await db
+    const rows = await db
       .insert(invitations)
       .values({ code, label, maxUses, expiresAt, createdBy: auth.id })
       .returning();
+    const created = rows[0];
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

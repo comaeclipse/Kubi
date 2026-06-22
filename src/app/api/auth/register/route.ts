@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         : null;
 
     const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-    const [user] = await db
+    const insertedRows = await db
       .insert(users)
       .values({
         emailHash,
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
         trialEndsAt,
       })
       .returning({ id: users.id });
+    const user = insertedRows[0];
 
     if (!invite) {
       const token = await issueEmailToken(user.id, "verify", VERIFY_TTL_MS);
