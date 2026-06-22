@@ -135,6 +135,19 @@ export default function MusicPage() {
     setCurrent(previous);
   }, [current, history]);
 
+  const playUpcoming = useCallback(
+    (index: number) => {
+      const selected = upcoming[index];
+      if (!selected || !current) return;
+
+      const traversed = [current, ...upcoming.slice(0, index)];
+      setHistory((previous) => [...previous, ...traversed].slice(-50));
+      setCurrent(selected);
+      setUpcoming(upcoming.slice(index + 1));
+    },
+    [current, upcoming]
+  );
+
   async function reshuffle() {
     setLoading(true);
     setError("");
@@ -221,7 +234,13 @@ export default function MusicPage() {
             <h2 className="mb-3 font-semibold">Up next</h2>
             <div className="space-y-3">
               {upcoming.slice(0, 8).map((track, index) => (
-                <div key={track.id} className="flex items-center gap-3">
+                <button
+                  key={track.id}
+                  type="button"
+                  onClick={() => playUpcoming(index)}
+                  className="flex w-full items-center gap-3 rounded-lg p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Play ${track.title} by ${track.channelTitle}`}
+                >
                   <span className="w-5 text-center text-xs text-muted-foreground">
                     {index + 1}
                   </span>
@@ -244,7 +263,7 @@ export default function MusicPage() {
                       {track.channelTitle}
                     </p>
                   </div>
-                </div>
+                </button>
               ))}
               {upcoming.length === 0 && (
                 <p className="text-sm text-muted-foreground">
