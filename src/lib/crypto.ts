@@ -60,6 +60,13 @@ export function decrypt(payload: string): string {
   return plaintext.toString("utf8");
 }
 
+// Legacy account migrations may briefly leave personal fields as plaintext.
+// Accept only values that clearly are not in our three-part GCM envelope;
+// malformed encrypted-looking values still fail closed through decrypt().
+export function decryptLegacyCompatible(payload: string): string {
+  return payload.split(":").length === 1 ? payload : decrypt(payload);
+}
+
 // Deterministic HMAC of a normalized email — used as a unique constraint and
 // login lookup key, since the encrypted `email` column can't be queried.
 export function emailBlindIndex(email: string): string {

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { profiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
-import { encrypt, decrypt } from "@/lib/crypto";
+import { encrypt, decryptLegacyCompatible } from "@/lib/crypto";
 
 export async function GET() {
   try {
@@ -16,9 +16,13 @@ export async function GET() {
       .where(eq(profiles.userId, auth.id));
 
     // Names are encrypted at rest — decrypt for the owner.
-    const decrypted = rows.map((p) => ({ ...p, name: decrypt(p.name) }));
+    const decrypted = rows.map((p) => ({
+      ...p,
+      name: decryptLegacyCompatible(p.name),
+    }));
     return NextResponse.json(decrypted);
-  } catch {
+  } catch (error) {
+    console.error("Failed to fetch profiles", error);
     return NextResponse.json(
       { error: "Failed to fetch profiles" },
       { status: 500 }
@@ -54,7 +58,8 @@ export async function POST(request: Request) {
       .returning();
 
     return NextResponse.json({ ...profile, name: name.trim() });
-  } catch {
+  } catch (error) {
+    console.error("Failed to create profile", error);
     return NextResponse.json(
       { error: "Failed to create profile" },
       { status: 500 }

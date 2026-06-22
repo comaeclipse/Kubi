@@ -98,7 +98,8 @@ export async function POST(request: Request) {
       videos: queue,
       eligibleCount: Number(countRows[0]?.count ?? 0),
     });
-  } catch {
+  } catch (error) {
+    console.error("Failed to build music queue", error);
     return NextResponse.json(
       { error: "Failed to build music queue" },
       { status: 500 }

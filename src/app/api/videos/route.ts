@@ -133,7 +133,8 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(result);
-  } catch {
+  } catch (error) {
+    console.error("Failed to fetch videos", error);
     return NextResponse.json(
       { error: "Failed to fetch videos" },
       { status: 500 }
