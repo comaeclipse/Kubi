@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       .insert(invitations)
       .values({ code, label, maxUses, expiresAt, createdBy: auth.id })
       .returning();
-    const created = rows[0];
+    const created = (rows as any[])[0];
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

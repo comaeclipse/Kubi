@@ -9,6 +9,7 @@ import {
   index,
   uniqueIndex,
   check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -37,7 +38,7 @@ export const users = pgTable("users", {
   currentPeriodEndsAt: timestamp("current_period_ends_at", { withTimezone: true }),
   // Set when the account registered through an invite link; set-null on invite
   // delete keeps the account alive. Used for per-invite registration counts.
-  invitedVia: integer("invited_via").references(() => invitations.id, {
+  invitedVia: integer("invited_via").references((): AnyPgColumn => invitations.id, {
     onDelete: "set null",
   }),
 });
@@ -241,7 +242,7 @@ export const invitations = pgTable("invitations", {
   // registration, and registration is already open.
   code: text("code").notNull().unique(),
   label: text("label"),
-  createdBy: integer("created_by").references(() => users.id, {
+  createdBy: integer("created_by").references((): AnyPgColumn => users.id, {
     onDelete: "set null",
   }),
   // Null = unlimited uses / never expires.

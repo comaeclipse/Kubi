@@ -18,11 +18,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  const rows = await db
+  const [deleted] = await db
     .delete(invitations)
     .where(eq(invitations.id, id))
     .returning({ id: invitations.id });
-  const deleted = rows[0];
 
   if (!deleted) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
