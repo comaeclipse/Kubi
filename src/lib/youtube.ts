@@ -44,7 +44,15 @@ function detectIsShort(duration: string, tags: string[], description: string): b
 export async function parseChannelIdentifier(
   input: string
 ): Promise<string> {
-  const trimmed = input.trim();
+  let trimmed = input.trim();
+
+  // Decode percent-encoding so handles pasted as URLs (e.g. /@RT%C3%89KIDSjr)
+  // resolve to the real handle (@RTÉKIDSjr) instead of truncating at the "%".
+  try {
+    trimmed = decodeURIComponent(trimmed);
+  } catch {
+    // Not valid percent-encoding — leave the input as-is.
+  }
 
   // Direct channel ID
   if (/^UC[\w-]{22}$/.test(trimmed)) {
@@ -59,14 +67,16 @@ export async function parseChannelIdentifier(
     return channelIdMatch[1];
   }
 
-  // Handle format: @handle or URL with /@handle
+  // Handle format: @handle or URL with /@handle. Handles may contain unicode
+  // letters, so capture everything up to the next path/query separator rather
+  // than restricting to ASCII word characters.
   const handleMatch =
-    trimmed.match(/youtube\.com\/@([\w.-]+)/) ||
-    trimmed.match(/^@([\w.-]+)$/);
+    trimmed.match(/youtube\.com\/@([^/?&#\s]+)/) ||
+    trimmed.match(/^@([^/?&#\s]+)$/);
   if (handleMatch) {
     const handle = handleMatch[1];
     const res = await fetch(
-      `${BASE_URL}/channels?part=id&forHandle=${handle}&key=${API_KEY}`
+      `${BASE_URL}/channels?part=id&forHandle=${encodeURIComponent(handle)}&key=${API_KEY}`
     );
     const data = await res.json();
     if (data.items?.length > 0) {

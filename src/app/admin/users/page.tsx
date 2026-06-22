@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { UserManager } from "@/components/admin/user-manager";
+import { UserManager, type User } from "@/components/admin/user-manager";
 import { OperatorGuard } from "@/components/admin/operator-guard";
 
 function Users() {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState<User[]>([]);
 
   const loadUsers = useCallback(async () => {
     try {

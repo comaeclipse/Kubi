@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { NoZoom } from "@/components/no-zoom";
+import { PwaRegister } from "@/components/pwa-register";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -18,12 +19,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  applicationName: "Kubi",
   title: "Kubi",
   description: "Kid-friendly YouTube curation",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Kubi",
+  },
+  icons: {
+    icon: "/icons/icon-192.png",
+    apple: "/icons/apple-icon.png",
+  },
 };
 
 export const viewport = {
   userScalable: false,
+  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({
@@ -37,6 +49,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <NoZoom />
+        <PwaRegister />
         <AppShell>{children}</AppShell>
         <Toaster />
         <Analytics />
