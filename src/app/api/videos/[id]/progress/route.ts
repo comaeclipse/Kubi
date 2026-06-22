@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
+import { userOwnsProfile } from "@/lib/ownership";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
   const { id: youtubeVideoId } = await params;
   const profileId = req.nextUrl.searchParams.get("profileId");
 
-  if (!profileId) {
+  if (!profileId || !(await userOwnsProfile(auth.id, parseInt(profileId)))) {
     return NextResponse.json({ progressSeconds: 0 });
   }
 
@@ -33,6 +38,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
   const { id: youtubeVideoId } = await params;
   const body = await req.json();
   const seconds = Number(body?.seconds ?? 0);
@@ -40,6 +48,10 @@ export async function POST(
 
   if (!profileId || !Number.isFinite(profileId)) {
     return NextResponse.json({ error: "profileId is required" }, { status: 400 });
+  }
+
+  if (!(await userOwnsProfile(auth.id, profileId))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (!Number.isFinite(seconds) || seconds < 0) {

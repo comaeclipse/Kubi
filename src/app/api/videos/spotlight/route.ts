@@ -1,12 +1,33 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { videos, channels, videoProgress } from "@/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { videos, channels, videoProgress, userChannels } from "@/db/schema";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
+import { userOwnsProfile } from "@/lib/ownership";
 
 export async function GET(request: Request) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const url = new URL(request.url);
-    const profileId = url.searchParams.get("profileId");
+    const profileIdParam = url.searchParams.get("profileId");
+    // Only honor a profileId the caller actually owns (it drives progress).
+    const profileId =
+      profileIdParam &&
+      (await userOwnsProfile(auth.id, parseInt(profileIdParam)))
+        ? profileIdParam
+        : null;
+
+    // Restrict the home spotlight to channels this account has enabled.
+    const enabledRows = await db
+      .select({ channelId: userChannels.channelId })
+      .from(userChannels)
+      .where(eq(userChannels.userId, auth.id));
+    const enabledIds = enabledRows.map((r) => r.channelId);
+    if (enabledIds.length === 0) {
+      return NextResponse.json([]);
+    }
 
     const channelList = await db
       .select({
@@ -21,6 +42,7 @@ export async function GET(request: Request) {
         videos,
         and(eq(videos.channelId, channels.id), eq(videos.hidden, false))
       )
+      .where(inArray(channels.id, enabledIds))
       .groupBy(channels.id)
       .orderBy(sql`RANDOM()`);
 

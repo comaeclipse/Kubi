@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Lock, Unlock, Users, Search, X } from "lucide-react";
+import { Users, Search, X, Settings, LogOut } from "lucide-react";
 import { useProfile } from "@/context/profile-context";
+import { useAuth } from "@/context/auth-context";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 
 function SearchBar() {
@@ -57,27 +58,19 @@ function SearchBar() {
 }
 
 export function Header() {
-  const [isAdmin, setIsAdmin] = useState(false);
   const { activeProfile, profiles, switchProfile, clearProfile } = useProfile();
-
-  useEffect(() => {
-    fetch("/api/auth/status")
-      .then((r) => r.json())
-      .then((data) => setIsAdmin(data.isAdmin))
-      .catch(() => {});
-  }, []);
+  const { user } = useAuth();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    setIsAdmin(false);
-    window.location.reload();
+    window.location.href = "/login";
   }
 
   return (
     <header className="flex items-center gap-2 border-b px-4 h-14 shrink-0">
       <SidebarTrigger />
       <Link href="/" className="font-bold text-lg shrink-0">
-        SafeVision
+        Kubi
       </Link>
 
       <div className="flex-1 flex justify-center px-4">
@@ -126,17 +119,35 @@ export function Header() {
         </DropdownMenu>
       )}
 
-      {isAdmin ? (
-        <Button variant="ghost" size="icon" onClick={handleLogout} title="Lock admin">
-          <Unlock className="h-4 w-4" />
-        </Button>
-      ) : (
-        <Button variant="ghost" size="icon" asChild title="Admin">
-          <Link href="/admin">
-            <Lock className="h-4 w-4" />
-          </Link>
-        </Button>
-      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title="Account">
+            <Settings className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          {user && (
+            <>
+              <div className="px-2 py-1.5 text-xs text-muted-foreground truncate">
+                {user.email}
+              </div>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          {user?.isOperator && (
+            <DropdownMenuItem asChild className="gap-2">
+              <Link href="/admin">
+                <Settings className="h-4 w-4" />
+                Manage
+              </Link>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={handleLogout} className="gap-2">
+            <LogOut className="h-4 w-4" />
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   );
 }

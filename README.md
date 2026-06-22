@@ -8,22 +8,26 @@ It's a custom frontend: your child sees a clean, kid-friendly interface containi
 
 ## What it does
 
+- **Multi-user accounts** — Parents register with email and password. Each account gets its own isolated library of channels, profiles, and playlists.
+- **Email verification** — New accounts must verify their email before they can log in. Password reset is also email-based.
+- **Operator role** — One or more "operator" accounts curate the master channel library; regular parent accounts toggle which channels from the library appear in their view.
 - **Curate by channel** — Add YouTube channels by ID; Kubi pulls in their videos so your kids can browse them in a safe shell.
 - **Hide individual videos** — Approve a channel but veto specific videos you don't want shown.
 - **Self-hosted video** — Add your own videos as "channels" via [Bunny Stream](https://bunny.net/) (e.g. home movies, downloaded content) alongside YouTube channels.
 - **Kid profiles** — Separate, colorful profiles per child, each with its own watch history and playlists.
 - **Resume watching** — Watch progress is saved per profile, so kids pick up where they left off.
 - **Playlists** — Build curated playlists, including importing existing YouTube playlists.
-- **PIN-protected admin** — All management (adding channels, hiding videos, creating profiles) lives behind a parent-set PIN. Kids can't change what they're allowed to watch.
+- **Encryption at rest** — Emails and kid profile names are AES-256-GCM encrypted in the database; email lookups use an HMAC blind index.
 - **Automatic sync** — A daily cron job pulls new uploads from your approved channels so the library stays fresh without manual work.
 
 ## Tech stack
 
-- [Next.js 16](https://nextjs.org) (App Router) + React 19
+- [Next.js 16](https://nextjs.org) (App Router)
 - [Neon](https://neon.tech) serverless Postgres via [Drizzle ORM](https://orm.drizzle.team)
 - [Tailwind CSS 4](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)
 - YouTube Data API v3 for channel/video metadata
 - Bunny Stream (optional) for self-hosted video
+- [Resend](https://resend.com) for transactional email (verification, password reset)
 - Designed to deploy on [Vercel](https://vercel.com)
 
 ## Running locally
@@ -36,24 +40,13 @@ It's a custom frontend: your child sees a clean, kid-friendly interface containi
    npm install
    ```
 
-2. **Configure environment** — create a `.env` file in the project root:
+2. **Configure environment** — copy `.env.example` to `.env` and fill in the values:
 
    ```bash
-   # Database (Neon Postgres pooled connection string)
-   DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
-
-   # YouTube Data API v3 key (for fetching channel/video metadata)
-   YOUTUBE_API_KEY=your_youtube_api_key
-
-   # Shared secret protecting the cron sync endpoint
-   CRON_SECRET=any_long_random_string
-
-   # --- Bunny Stream (optional — only if hosting your own videos) ---
-   BUNNY_STREAM_LIBRARY_ID=
-   BUNNY_STREAM_CDN_HOSTNAME=
-   BUNNY_STREAM_TOKEN_SECURITY_KEY=
-   BUNNY_STREAM_API_KEY=
+   cp .env.example .env
    ```
+
+   See the [Environment variables](#environment-variables) section below for the full list.
 
 3. **Push the database schema**
 
@@ -67,7 +60,27 @@ It's a custom frontend: your child sees a clean, kid-friendly interface containi
    npm run dev
    ```
 
-   Open [http://localhost:3000](http://localhost:3000). On first visit you'll set the admin PIN, then add your first channel from the admin area.
+   Open [http://localhost:3000](http://localhost:3000). You'll be prompted to register an account. The first account can be promoted to operator via a direct database update:
+
+   ```sql
+   UPDATE users SET is_operator = true WHERE id = 1;
+   ```
+
+## Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | ✅ | Neon Postgres pooled connection string |
+| `YOUTUBE_API_KEY` | ✅ | YouTube Data API v3 key |
+| `CRON_SECRET` | ✅ | Long random string protecting the cron sync endpoint |
+| `ENCRYPTION_KEY` | ✅ | Base64-encoded 32-byte key for at-rest encryption. Generate with `openssl rand -base64 32` |
+| `NEXT_PUBLIC_APP_URL` | ✅ | Base URL for email links (e.g. `http://localhost:3000` locally, your domain in production) |
+| `RESEND_API_KEY` | optional | [Resend](https://resend.com) API key. If unset, verification/reset links are logged to the server console instead of emailed |
+| `EMAIL_FROM` | optional | Sender address for emails (defaults to `Kubi <onboarding@resend.dev>`) |
+| `BUNNY_STREAM_LIBRARY_ID` | optional | Bunny Stream library ID (only if hosting your own videos) |
+| `BUNNY_STREAM_CDN_HOSTNAME` | optional | Bunny CDN pull-zone hostname |
+| `BUNNY_STREAM_TOKEN_SECURITY_KEY` | optional | Bunny embed token authentication key |
+| `BUNNY_STREAM_API_KEY` | optional | Bunny Stream management API key |
 
 ## Deploying on Vercel
 
@@ -79,19 +92,16 @@ The app is built to run on Vercel with zero extra configuration.
 
 3. **Add a database** — provision [Neon Postgres from the Vercel Marketplace](https://vercel.com/marketplace/neon) (or bring your own). This sets `DATABASE_URL` for you.
 
-4. **Set environment variables** in the Vercel project settings (Settings → Environment Variables):
-
-   | Variable | Required | Notes |
-   |----------|----------|-------|
-   | `DATABASE_URL` | ✅ | Auto-set if you use the Neon Marketplace integration |
-   | `YOUTUBE_API_KEY` | ✅ | YouTube Data API v3 key |
-   | `CRON_SECRET` | ✅ | Long random string; Vercel passes this to the cron job |
-   | `BUNNY_STREAM_*` | optional | Only if you host your own videos via Bunny Stream |
+4. **Set environment variables** in the Vercel project settings (Settings → Environment Variables). See the [Environment variables](#environment-variables) table above.
 
 5. **Deploy.** Vercel builds and ships the app.
 
 6. **Initialize the database** — run `npx drizzle-kit push` locally against your production `DATABASE_URL`, or pull the env with `vercel env pull` first.
 
-7. **Daily sync** — [`vercel.json`](./vercel.json) registers a cron job that hits `/api/cron/sync-channels` once a day (04:00 UTC) to pull new uploads from your approved channels. Vercel runs this automatically; the `CRON_SECRET` authenticates the request.
+7. **Create an operator** — register the first account, then promote it:
 
-Once deployed, open the site, set your admin PIN, and start curating.
+   ```sql
+   UPDATE users SET is_operator = true WHERE id = 1;
+   ```
+
+8. **Daily sync** — [`vercel.json`](./vercel.json) registers a cron job that hits `/api/cron/sync-channels` once a day (04:00 UTC) to pull new uploads from your approved channels. Vercel runs this automatically; the `CRON_SECRET` authenticates the request.

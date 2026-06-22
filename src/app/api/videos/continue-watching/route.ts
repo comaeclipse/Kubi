@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress, videos, channels } from "@/db/schema";
 import { eq, and, gt, desc } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
+import { userOwnsProfile } from "@/lib/ownership";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
   const profileId = req.nextUrl.searchParams.get("profileId");
 
-  if (!profileId) {
+  if (!profileId || !(await userOwnsProfile(auth.id, parseInt(profileId)))) {
     return NextResponse.json(null);
   }
 

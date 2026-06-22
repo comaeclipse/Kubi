@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress, videos, channels } from "@/db/schema";
 import { eq, and, gt, desc, count } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
+import { userOwnsProfile } from "@/lib/ownership";
 
 const PAGE_SIZE = 12;
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
   const profileId = req.nextUrl.searchParams.get("profileId");
 
   if (!profileId) {
@@ -13,6 +18,10 @@ export async function GET(req: NextRequest) {
       { error: "profileId is required" },
       { status: 400 }
     );
+  }
+
+  if (!(await userOwnsProfile(auth.id, parseInt(profileId)))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE));

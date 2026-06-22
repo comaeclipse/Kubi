@@ -98,7 +98,7 @@ export default function ChannelPage() {
           (c: Channel) => c.youtubeChannelId === params.channelId
         );
         setChannel(ch || null);
-        setIsAdmin(auth.isAdmin);
+        setIsAdmin(auth.user?.isOperator ?? false);
       })
       .catch(() => {});
 

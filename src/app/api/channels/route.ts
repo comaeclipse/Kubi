@@ -1,34 +1,50 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { channels } from "@/db/schema";
-import { asc } from "drizzle-orm";
+import { channels, userChannels } from "@/db/schema";
+import { asc, eq } from "drizzle-orm";
 import crypto from "crypto";
-import { isAdmin } from "@/lib/auth";
+import { requireUser, requireOperator } from "@/lib/auth";
 import {
   parseChannelIdentifier,
   fetchChannelInfo,
 } from "@/lib/youtube";
 import { DEFAULT_CDN_HOSTNAME, DEFAULT_LIBRARY_ID } from "@/lib/bunny";
 
-export async function GET() {
+// GET /api/channels        -> channels this account has enabled (kid-facing)
+// GET /api/channels?all=1  -> the full master library annotated with `enabled`
+//                            (for the per-account toggle UI)
+export async function GET(request: Request) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
+    const all = new URL(request.url).searchParams.has("all");
+
     const allChannels = await db
       .select()
       .from(channels)
       .orderBy(asc(channels.title));
 
-    // For Bunny channels, expose the cover as a (server-signed) thumbnail URL
-    // derived from the chosen cover video.
-    const withCovers = allChannels.map((ch) =>
-      ch.source === "bunny"
-        ? {
-            ...ch,
-            thumbnailUrl: ch.bunnyCoverVideoId
+    const enabledRows = await db
+      .select({ channelId: userChannels.channelId })
+      .from(userChannels)
+      .where(eq(userChannels.userId, auth.id));
+    const enabledIds = new Set(enabledRows.map((r) => r.channelId));
+
+    const withCovers = allChannels
+      .filter((ch) => all || enabledIds.has(ch.id))
+      .map((ch) => ({
+        ...ch,
+        enabled: enabledIds.has(ch.id),
+        // For Bunny channels, expose the cover as a (server-signed) thumbnail
+        // URL derived from the chosen cover video.
+        thumbnailUrl:
+          ch.source === "bunny"
+            ? ch.bunnyCoverVideoId
               ? `/api/bunny/thumbnail/${ch.bunnyCoverVideoId}`
-              : ch.thumbnailUrl,
-          }
-        : ch
-    );
+              : ch.thumbnailUrl
+            : ch.thumbnailUrl,
+      }));
 
     return NextResponse.json(withCovers);
   } catch {
@@ -41,9 +57,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const body = await request.json();
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, videos, videoProgress } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { requireOperator } from "@/lib/auth";
 
 // Add a Bunny video to a channel by its Bunny video GUID. Manual metadata:
 // the title is supplied by the admin; thumbnail/duration are derived/omitted.
@@ -11,9 +11,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const channelId = parseInt(id);
@@ -77,9 +76,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const channelId = parseInt(id);

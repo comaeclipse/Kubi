@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { videos, channels, videoProgress } from "@/db/schema";
-import { eq, and, desc, ne, sql } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { videos, channels, videoProgress, userChannels } from "@/db/schema";
+import { eq, and, desc, ne, sql, inArray } from "drizzle-orm";
+import { requireUser, requireOperator } from "@/lib/auth";
 import { extractKeywords } from "@/lib/related-videos";
 import { buildEmbedUrl, resolveLibraryId } from "@/lib/bunny";
 
@@ -21,9 +21,28 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const url = new URL(request.url);
     const profileId = url.searchParams.get("profileId");
+
+    // Non-operators may only watch videos from channels they've enabled.
+    let enabledIds: number[] = [];
+    if (!auth.isOperator) {
+      const rows = await db
+        .select({ channelId: userChannels.channelId })
+        .from(userChannels)
+        .where(eq(userChannels.userId, auth.id));
+      enabledIds = rows.map((r) => r.channelId);
+    }
+    const enabledFilter = (col: typeof videos.channelId) =>
+      auth.isOperator
+        ? undefined
+        : enabledIds.length > 0
+          ? inArray(col, enabledIds)
+          : sql`false`;
 
     const progressJoinCondition = profileId
       ? and(
@@ -53,7 +72,7 @@ export async function GET(
       .from(videos)
       .leftJoin(channels, eq(videos.channelId, channels.id))
       .leftJoin(videoProgress, progressJoinCondition)
-      .where(eq(videos.youtubeVideoId, id))
+      .where(and(eq(videos.youtubeVideoId, id), enabledFilter(videos.channelId)))
       .limit(1);
 
     if (!video) {
@@ -133,6 +152,7 @@ export async function GET(
             ne(videos.channelId, video.channelId),
             eq(videos.hidden, false),
             eq(videos.isShort, false),
+            enabledFilter(videos.channelId),
             sql`(${sql.join(orConditions, sql` OR `)})`
           )
         )
@@ -173,9 +193,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const body = await request.json();
@@ -222,9 +241,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const videoId = parseInt(id);

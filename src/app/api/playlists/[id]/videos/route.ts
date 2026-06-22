@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { playlistVideos } from "@/db/schema";
-import { eq, and, sql, max } from "drizzle-orm";
+import { eq, and, max } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
+import { userOwnsPlaylist } from "@/lib/ownership";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const { videoId } = await request.json();
     const playlistId = parseInt(id);
@@ -17,6 +22,10 @@ export async function POST(
         { error: "videoId is required" },
         { status: 400 }
       );
+    }
+
+    if (!(await userOwnsPlaylist(auth.id, playlistId))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     // Get max position
@@ -50,6 +59,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const { videoId } = await request.json();
     const playlistId = parseInt(id);
@@ -59,6 +71,10 @@ export async function DELETE(
         { error: "videoId is required" },
         { status: 400 }
       );
+    }
+
+    if (!(await userOwnsPlaylist(auth.id, playlistId))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     await db
