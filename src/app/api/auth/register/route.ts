@@ -49,7 +49,8 @@ export async function POST(request: Request) {
     await sendVerificationEmail(normalizeEmail(email), token);
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error("[register] failed:", err);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
