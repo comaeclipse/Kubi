@@ -7,10 +7,16 @@ import { Resend } from "resend";
 // flow is still testable end-to-end without a provider.
 
 function appUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-    "http://localhost:3000"
-  );
+  // Prefer an explicit URL. APP_URL is a plain runtime var (no build-time
+  // inlining gotcha); NEXT_PUBLIC_APP_URL is supported for back-compat.
+  const explicit = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+  // On Vercel this is always present at runtime (the project's production
+  // domain), so email links work even without any custom env var.
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+  return "http://localhost:3000";
 }
 
 // Returns true if the email was sent (or skipped in dev), false on provider
