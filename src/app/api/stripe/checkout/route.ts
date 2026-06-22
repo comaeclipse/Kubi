@@ -4,8 +4,12 @@ import { stripe } from "@/lib/stripe";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { checkBotId } from "botid/server";
 
 export async function POST() {
+  const { isBot } = await checkBotId();
+  if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!user.emailVerified) return NextResponse.json({ error: "Email not verified" }, { status: 403 });

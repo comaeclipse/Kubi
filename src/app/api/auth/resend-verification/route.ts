@@ -5,9 +5,13 @@ import { eq } from "drizzle-orm";
 import { decrypt, emailBlindIndex } from "@/lib/crypto";
 import { issueEmailToken, VERIFY_TTL_MS } from "@/lib/email-tokens";
 import { sendVerificationEmail } from "@/lib/email";
+import { checkBotId } from "botid/server";
 
 export async function POST(request: Request) {
   try {
+    const { isBot } = await checkBotId();
+    if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
     const { email } = await request.json();
 
     // Always respond 200 (no account enumeration).

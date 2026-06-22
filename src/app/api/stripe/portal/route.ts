@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
+import { checkBotId } from "botid/server";
 
 export async function POST() {
+  const { isBot } = await checkBotId();
+  if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!user.stripeCustomerId) {

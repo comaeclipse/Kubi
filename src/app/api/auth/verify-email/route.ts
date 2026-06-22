@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { consumeEmailToken } from "@/lib/email-tokens";
+import { checkBotId } from "botid/server";
 
 async function verify(token: string | null) {
   if (!token) {
@@ -24,6 +25,9 @@ async function verify(token: string | null) {
 
 export async function POST(request: Request) {
   try {
+    const { isBot } = await checkBotId();
+    if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
     const { token } = await request.json();
     return await verify(typeof token === "string" ? token : null);
   } catch {

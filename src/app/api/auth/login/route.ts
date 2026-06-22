@@ -4,9 +4,13 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { createSession, verifyPassword } from "@/lib/auth";
 import { emailBlindIndex } from "@/lib/crypto";
+import { checkBotId } from "botid/server";
 
 export async function POST(request: Request) {
   try {
+    const { isBot } = await checkBotId();
+    if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
     const { email, password } = await request.json();
 
     if (typeof email !== "string" || typeof password !== "string") {

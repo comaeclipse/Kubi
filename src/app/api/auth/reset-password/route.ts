@@ -5,9 +5,13 @@ import { eq } from "drizzle-orm";
 import { hashPassword, destroyAllSessions } from "@/lib/auth";
 import { consumeEmailToken } from "@/lib/email-tokens";
 import { isValidPassword } from "@/lib/validation";
+import { checkBotId } from "botid/server";
 
 export async function POST(request: Request) {
   try {
+    const { isBot } = await checkBotId();
+    if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
     const { token, password } = await request.json();
 
     if (typeof token !== "string" || !token) {

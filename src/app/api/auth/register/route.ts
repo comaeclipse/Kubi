@@ -7,9 +7,13 @@ import { encrypt, emailBlindIndex, normalizeEmail } from "@/lib/crypto";
 import { isValidEmail, isValidPassword } from "@/lib/validation";
 import { issueEmailToken, VERIFY_TTL_MS } from "@/lib/email-tokens";
 import { sendVerificationEmail } from "@/lib/email";
+import { checkBotId } from "botid/server";
 
 export async function POST(request: Request) {
   try {
+    const { isBot } = await checkBotId();
+    if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
     const { email, password } = await request.json();
 
     if (!isValidEmail(email)) {

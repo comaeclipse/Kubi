@@ -3,12 +3,16 @@ import { db } from "@/db";
 import { channels, userChannels, users } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
+import { checkBotId } from "botid/server";
 
 // Finishes first-run onboarding: enables the chosen master-library channels for
 // the account and stamps `onboarded_at` so the modal never shows again. Called
 // for both "enable selected" and "skip" (with an empty list).
 export async function POST(request: Request) {
   try {
+    const { isBot } = await checkBotId();
+    if (isBot) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
     const auth = await requireUser();
     if (auth instanceof NextResponse) return auth;
 
