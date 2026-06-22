@@ -10,6 +10,7 @@ const TABS = [
   { href: "/admin", label: "My Family", operatorOnly: false },
   { href: "/admin/library", label: "Master Library", operatorOnly: true },
   { href: "/admin/labels", label: "Labels", operatorOnly: true },
+  { href: "/admin/users", label: "Users", operatorOnly: true },
   { href: "/admin/invites", label: "Invites", operatorOnly: true },
 ];
 
