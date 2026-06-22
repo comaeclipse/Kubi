@@ -1,7 +1,7 @@
+import crypto from "crypto";
 import { db } from "@/db";
 import { invitations, users } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { generateToken } from "@/lib/crypto";
 
 export type Invitation = typeof invitations.$inferSelect;
 
@@ -29,7 +29,17 @@ export async function findUsableInvite(code: string): Promise<Invitation | null>
   return invite;
 }
 
-// Generates a random 16-byte URL-safe token for use as an invite code.
-export function newInviteCode(): string {
-  return generateToken(16);
+// Human-friendly alphabet for short invite codes — omits ambiguous
+// characters (0/O, 1/I/L) so codes are easy to read and type.
+const INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+// Generates a short, random, human-friendly invite code (default 5 chars).
+// 31^5 ≈ 28M combinations; collisions are caught by the unique constraint and
+// retried by the caller.
+export function newInviteCode(length = 5): string {
+  let code = "";
+  for (let i = 0; i < length; i++) {
+    code += INVITE_ALPHABET[crypto.randomInt(INVITE_ALPHABET.length)];
+  }
+  return code;
 }
