@@ -16,7 +16,25 @@ export type CurrentUser = {
   isOperator: boolean;
   // False until the parent finishes the first-run channel picker.
   onboarded: boolean;
+  // Subscription
+  stripeCustomerId: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+  trialEndsAt: Date | null;
+  currentPeriodEndsAt: Date | null;
+  // Derived: true if user has active trial or paid subscription (operators always true).
+  hasAccess: boolean;
 };
+
+function computeHasAccess(u: {
+  isOperator: boolean;
+  trialEndsAt: Date | null;
+  subscriptionStatus: string | null;
+}): boolean {
+  if (u.isOperator) return true;
+  if (u.trialEndsAt && u.trialEndsAt > new Date()) return true;
+  return u.subscriptionStatus === "active" || u.subscriptionStatus === "trialing";
+}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
@@ -63,6 +81,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       isOperator: users.isOperator,
       onboardedAt: users.onboardedAt,
       expiresAt: sessions.expiresAt,
+      stripeCustomerId: users.stripeCustomerId,
+      subscriptionId: users.subscriptionId,
+      subscriptionStatus: users.subscriptionStatus,
+      trialEndsAt: users.trialEndsAt,
+      currentPeriodEndsAt: users.currentPeriodEndsAt,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
@@ -80,6 +103,16 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     emailVerified: row.emailVerified,
     isOperator: row.isOperator,
     onboarded: row.onboardedAt !== null,
+    stripeCustomerId: row.stripeCustomerId,
+    subscriptionId: row.subscriptionId,
+    subscriptionStatus: row.subscriptionStatus,
+    trialEndsAt: row.trialEndsAt,
+    currentPeriodEndsAt: row.currentPeriodEndsAt,
+    hasAccess: computeHasAccess({
+      isOperator: row.isOperator,
+      trialEndsAt: row.trialEndsAt,
+      subscriptionStatus: row.subscriptionStatus,
+    }),
   };
 }
 
@@ -114,6 +147,9 @@ export async function requireUser(): Promise<CurrentUser | NextResponse> {
   }
   if (!user.emailVerified) {
     return NextResponse.json({ error: "Email not verified" }, { status: 403 });
+  }
+  if (!user.hasAccess) {
+    return NextResponse.json({ error: "subscription_required" }, { status: 402 });
   }
   return user;
 }

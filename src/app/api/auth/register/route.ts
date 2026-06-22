@@ -36,12 +36,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
+    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     const [user] = await db
       .insert(users)
       .values({
         emailHash,
         email: encrypt(normalizeEmail(email)),
         passwordHash: await hashPassword(password),
+        trialEndsAt,
       })
       .returning({ id: users.id });
 

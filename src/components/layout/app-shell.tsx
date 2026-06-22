@@ -1,28 +1,37 @@
 "use client";
 
-import { type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { type ReactNode, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { ProfileProvider, useProfile } from "@/context/profile-context";
 import { ProfilePicker } from "@/components/profile/profile-picker";
-import { AuthProvider } from "@/context/auth-context";
+import { AuthProvider, useAuth } from "@/context/auth-context";
 import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
 
-// Routes that render bare (no sidebar/profile chrome): the auth flow.
+// Routes that render bare (no sidebar/profile chrome): the auth flow + billing.
 const BARE_PREFIXES = [
   "/login",
   "/register",
   "/verify-email",
   "/forgot-password",
   "/reset-password",
+  "/subscribe",
 ];
 
 function AppContent({ children }: { children: ReactNode }) {
-  const { loading } = useProfile();
+  const { loading: profileLoading } = useProfile();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
-  if (loading) {
+  useEffect(() => {
+    if (!authLoading && user && !user.hasAccess) {
+      router.push("/subscribe");
+    }
+  }, [authLoading, user, router]);
+
+  if (profileLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground">Loading...</p>
