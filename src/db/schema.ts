@@ -35,6 +35,11 @@ export const users = pgTable("users", {
   // Set to createdAt + 14 days on registration; access is granted while this is in the future.
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   currentPeriodEndsAt: timestamp("current_period_ends_at", { withTimezone: true }),
+  // Set when the account registered through an invite link; set-null on invite
+  // delete keeps the account alive. Used for per-invite registration counts.
+  invitedVia: integer("invited_via").references(() => invitations.id, {
+    onDelete: "set null",
+  }),
 });
 
 // Server-side sessions (revocable). The cookie stores the opaque `token`.
@@ -226,3 +231,21 @@ export const videoProgress = pgTable(
     pk: primaryKey({ columns: [table.profileId, table.youtubeVideoId] }),
   })
 );
+
+// Operator-created reusable invite links. A single code can be shared with
+// multiple people; each registration through it is counted via users.invitedVia.
+export const invitations = pgTable("invitations", {
+  id: serial("id").primaryKey(),
+  // Random, unguessable, URL-safe token shared in the link. Stored in
+  // plaintext (not hashed) — the only privilege it grants is auto-verified
+  // registration, and registration is already open.
+  code: text("code").notNull().unique(),
+  label: text("label"),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  // Null = unlimited uses / never expires.
+  maxUses: integer("max_uses"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

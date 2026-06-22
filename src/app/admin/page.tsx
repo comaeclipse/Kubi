@@ -24,7 +24,9 @@ import { CronStatus } from "@/components/admin/cron-status";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 import { TaxonomyManager } from "@/components/admin/taxonomy-manager";
+import { InviteManager } from "@/components/admin/invite-manager";
 import type { Label } from "@/lib/taxonomy";
+import type { Invite } from "@/components/admin/invite-manager";
 
 interface Channel {
   id: number;
@@ -66,11 +68,21 @@ export default function AdminPage() {
   const [adminProfiles, setAdminProfiles] = useState<{ id: number; name: string; avatarColor: string }[]>([]);
   const [sharedPlaylists, setSharedPlaylists] = useState<{ id: number; name: string; profileId: number | null; videoCount: number }[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
 
   const loadLabels = useCallback(async () => {
     try {
       const data = await fetch("/api/labels").then((response) => response.json());
       setLabels(Array.isArray(data) ? data : []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadInvites = useCallback(async () => {
+    try {
+      const data = await fetch("/api/admin/invites").then((r) => r.json());
+      setInvites(Array.isArray(data) ? data : []);
     } catch {
       // ignore
     }
@@ -153,8 +165,9 @@ export default function AdminPage() {
       loadChannels();
       loadPlaylists();
       loadLabels();
+      loadInvites();
     }
-  }, [user, isOperator, loadChannels, loadProfiles, loadPlaylists, loadLabels]);
+  }, [user, isOperator, loadChannels, loadProfiles, loadPlaylists, loadLabels, loadInvites]);
 
   // Fetch videos whenever the selected channel changes (operator only).
   useEffect(() => {
@@ -244,6 +257,10 @@ export default function AdminPage() {
           </p>
 
           <TaxonomyManager labels={labels} onRefresh={loadLabels} />
+
+          <Separator />
+
+          <InviteManager invites={invites} onRefresh={loadInvites} />
 
           <Separator />
 
