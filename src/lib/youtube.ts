@@ -139,9 +139,14 @@ export async function fetchVideoPage(
   };
 }
 
+// knownVideoIds: stop as soon as any already-imported video is encountered.
+// Using a Set rather than a single "newest" ID makes incremental sync robust
+// against channels that delete or private their latest video (e.g. live
+// streams that disappear after broadcast), which would otherwise cause the
+// entire playlist to be traversed on every cron run.
 export async function fetchAllVideos(
   uploadsPlaylistId: string,
-  stopAtVideoId?: string
+  knownVideoIds?: Set<string>
 ): Promise<VideoInfo[]> {
   const allVideos: VideoInfo[] = [];
   let pageToken: string | undefined;
@@ -162,8 +167,7 @@ export async function fetchAllVideos(
     for (const item of data.items) {
       const videoId = item.snippet.resourceId.videoId;
 
-      // Stop at known video for incremental sync
-      if (stopAtVideoId && videoId === stopAtVideoId) {
+      if (knownVideoIds?.has(videoId)) {
         return allVideos;
       }
 

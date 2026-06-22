@@ -2,21 +2,32 @@
 
 import { useProfile } from "@/context/profile-context";
 import { ProfileAvatar } from "./profile-avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export function ProfilePicker() {
-  const { profiles, switchProfile } = useProfile();
+  const { profiles, activeProfile, loading, switchProfile } = useProfile();
+
+  const open = !loading && !activeProfile && profiles.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background">
-      <div className="text-center space-y-8 px-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Who's watching?</h1>
-          <p className="text-muted-foreground mt-2">
-            Select your profile to continue
-          </p>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-6 max-w-lg">
+    <Dialog open={open} onOpenChange={() => {}}>
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-md"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="text-center">
+          <DialogTitle className="text-2xl font-bold">Who's watching?</DialogTitle>
+          <DialogDescription>Select your profile to continue</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap justify-center gap-6 py-4">
           {profiles.map((profile) => (
             <button
               key={profile.id}
@@ -36,7 +47,7 @@ export function ProfilePicker() {
             </button>
           ))}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

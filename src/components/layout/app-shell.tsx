@@ -20,22 +20,13 @@ const BARE_PREFIXES = [
 ];
 
 function AppContent({ children }: { children: ReactNode }) {
-  const { activeProfile, profiles, loading } = useProfile();
+  const { loading } = useProfile();
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground">Loading...</p>
       </div>
-    );
-  }
-
-  if (!activeProfile && profiles.length > 0) {
-    return (
-      <>
-        <ProfilePicker />
-        <OnboardingDialog />
-      </>
     );
   }
 
@@ -47,6 +38,7 @@ function AppContent({ children }: { children: ReactNode }) {
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
       <OnboardingDialog />
+      <ProfilePicker />
     </SidebarProvider>
   );
 }

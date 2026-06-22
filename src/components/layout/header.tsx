@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Users, Search, X, Settings, LogOut } from "lucide-react";
+import { Users, Search, X, Settings, LogOut, UserCircle } from "lucide-react";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
@@ -134,6 +134,12 @@ export function Header() {
               <DropdownMenuSeparator />
             </>
           )}
+          <DropdownMenuItem asChild className="gap-2">
+            <Link href="/profiles">
+              <UserCircle className="h-4 w-4" />
+              Manage Profiles
+            </Link>
+          </DropdownMenuItem>
           {user?.isOperator && (
             <DropdownMenuItem asChild className="gap-2">
               <Link href="/admin">
@@ -142,6 +148,7 @@ export function Header() {
               </Link>
             </DropdownMenuItem>
           )}
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout} className="gap-2">
             <LogOut className="h-4 w-4" />
             Log out

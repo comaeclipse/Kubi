@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, videos, settings } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { fetchAllVideos, fetchVideoDetails } from "@/lib/youtube";
 
 const HISTORY_KEY = "cron_sync_history";
@@ -24,19 +24,20 @@ export async function GET(request: Request) {
     // Skip manually-managed (e.g. Bunny) channels — nothing to sync.
     if (!channel.uploadsPlaylistId) continue;
     try {
-      // Get the newest known video so we only fetch what's new
-      const [newestVideo] = await db
-        .select()
+      // Load all known video IDs for this channel so fetchAllVideos can stop
+      // at the first one it encounters in the playlist. A single "newest" ID
+      // breaks when the channel deletes or privates that video (e.g. Peppa
+      // Pig's daily live streams), causing the entire 8700-video playlist to
+      // be traversed on every cron run.
+      const knownRows = await db
+        .select({ youtubeVideoId: videos.youtubeVideoId })
         .from(videos)
-        .where(eq(videos.channelId, channel.id))
-        .orderBy(desc(videos.publishedAt))
-        .limit(1);
-
-      const stopAtVideoId = newestVideo?.youtubeVideoId;
+        .where(eq(videos.channelId, channel.id));
+      const knownVideoIds = new Set(knownRows.map((r) => r.youtubeVideoId));
 
       const newVideos = await fetchAllVideos(
         channel.uploadsPlaylistId,
-        stopAtVideoId
+        knownVideoIds
       );
 
       if (newVideos.length === 0) {

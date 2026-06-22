@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -28,11 +29,14 @@ interface ProfileContextValue {
 const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 const STORAGE_KEY = "safevision_active_profile_id";
+const LAST_ACTIVE_KEY = "safevision_last_active";
+const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const activeProfileIdRef = useRef<number | null>(null);
 
   const refreshProfiles = useCallback(async (): Promise<void> => {
     try {
@@ -53,11 +57,16 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         setProfiles(fetched);
 
         const storedId = localStorage.getItem(STORAGE_KEY);
-        if (storedId) {
+        const lastActiveRaw = localStorage.getItem(LAST_ACTIVE_KEY);
+        const elapsed = lastActiveRaw
+          ? Date.now() - parseInt(lastActiveRaw)
+          : Infinity;
+
+        if (storedId && elapsed <= INACTIVITY_MS) {
           const id = parseInt(storedId);
-          const exists = fetched.some((p) => p.id === id);
-          if (exists) {
+          if (fetched.some((p) => p.id === id)) {
             setActiveProfileId(id);
+            activeProfileIdRef.current = id;
           } else {
             localStorage.removeItem(STORAGE_KEY);
           }
@@ -70,13 +79,32 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
+  // Stamp the last-active time whenever the tab is hidden so inactivity is
+  // measured from when the user actually left, not when they picked a profile.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "hidden" &&
+        activeProfileIdRef.current !== null
+      ) {
+        localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   const switchProfile = useCallback((id: number) => {
     setActiveProfileId(id);
+    activeProfileIdRef.current = id;
     localStorage.setItem(STORAGE_KEY, id.toString());
+    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
   }, []);
 
   const clearProfile = useCallback(() => {
     setActiveProfileId(null);
+    activeProfileIdRef.current = null;
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
