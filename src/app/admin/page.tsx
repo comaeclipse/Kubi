@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { PinGate } from "@/components/admin/pin-gate";
+import { ChannelToggleList } from "@/components/admin/channel-toggle-list";
 import { ChannelManager } from "@/components/admin/channel-manager";
 import { BunnyChannelManager } from "@/components/admin/bunny-channel-manager";
 import { ProfileManager } from "@/components/admin/profile-manager";
@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { Scan, ChevronDown, ChevronRight } from "lucide-react";
 import { CronStatus } from "@/components/admin/cron-status";
 import { useProfile } from "@/context/profile-context";
+import { useAuth } from "@/context/auth-context";
 
 interface Channel {
   id: number;
@@ -49,9 +50,8 @@ interface Video {
 
 export default function AdminPage() {
   const { refreshProfiles: refreshContextProfiles } = useProfile();
-  const [authenticated, setAuthenticated] = useState(false);
-  const [pinSet, setPinSet] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { user, loading } = useAuth();
+  const isOperator = Boolean(user?.isOperator);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [videosLoading, setVideosLoading] = useState(false);
@@ -82,10 +82,10 @@ export default function AdminPage() {
     }
   }, [refreshContextProfiles]);
 
-  // Load only channels — never pulls the full video list
+  // Load the full master library (operators manage all channels/videos).
   const loadChannels = useCallback(async () => {
     try {
-      const data = await fetch("/api/channels").then((r) => r.json());
+      const data = await fetch("/api/channels?all=1").then((r) => r.json());
       setChannels(data);
       return data as Channel[];
     } catch {
@@ -130,30 +130,21 @@ export default function AdminPage() {
     }
   }, [loadChannels, loadVideos, selectedChannel]);
 
+  // Profiles + playlists belong to every account; the master channel/video
+  // library is only loaded for operators (who manage it).
   useEffect(() => {
-    fetch("/api/auth/status")
-      .then((r) => r.json())
-      .then((data) => {
-        setAuthenticated(data.isAdmin);
-        setPinSet(data.pinSet);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  // On login, fetch channels and profiles
-  useEffect(() => {
-    if (authenticated) {
+    if (!user) return;
+    loadProfiles();
+    if (isOperator) {
       loadChannels();
-      loadProfiles();
       loadPlaylists();
     }
-  }, [authenticated, loadChannels, loadProfiles, loadPlaylists]);
+  }, [user, isOperator, loadChannels, loadProfiles, loadPlaylists]);
 
-  // Fetch videos whenever the selected channel changes
+  // Fetch videos whenever the selected channel changes (operator only).
   useEffect(() => {
-    if (authenticated) loadVideos(selectedChannel);
-  }, [authenticated, selectedChannel, loadVideos]);
+    if (isOperator) loadVideos(selectedChannel);
+  }, [isOperator, selectedChannel, loadVideos]);
 
   async function handleToggleHidden(id: number, hidden: boolean) {
     try {
@@ -199,14 +190,8 @@ export default function AdminPage() {
     );
   }
 
-  if (!authenticated) {
-    return (
-      <PinGate
-        pinSet={pinSet}
-        onAuthenticated={() => setAuthenticated(true)}
-      />
-    );
-  }
+  // Middleware redirects unauthenticated users; this is just a safety net.
+  if (!user) return null;
 
   const shorts = videos.filter((v) => v.isShort);
   const regularVideos = videos.filter((v) => !v.isShort);
@@ -225,10 +210,26 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Admin Panel</h1>
+      <h1 className="text-2xl font-bold">Manage</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Left column — Channels & Profiles */}
+      {/* Per-account: your kids and the channels they can watch */}
+      <ProfileManager profiles={adminProfiles} onRefresh={loadProfiles} />
+
+      <Separator />
+
+      <ChannelToggleList />
+
+      {isOperator && (
+        <>
+          <Separator />
+          <h1 className="text-2xl font-bold">Master Library</h1>
+          <p className="text-sm text-muted-foreground">
+            Operator tools — channels and videos here are available for every
+            account to enable.
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Left column — Channels */}
         <div className="space-y-6">
           <ChannelManager channels={channels} onRefresh={handleChannelRefresh} />
 
@@ -238,10 +239,6 @@ export default function AdminPage() {
             channels={channels}
             onRefresh={handleChannelRefresh}
           />
-
-          <Separator />
-
-          <ProfileManager profiles={adminProfiles} onRefresh={loadProfiles} />
 
           <Separator />
 
@@ -360,7 +357,9 @@ export default function AdminPage() {
             </>
           )}
         </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

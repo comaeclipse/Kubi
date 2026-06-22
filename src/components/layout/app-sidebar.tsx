@@ -17,6 +17,7 @@ import { Home, Shield, ListMusic, History } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useProfile } from "@/context/profile-context";
+import { useAuth } from "@/context/auth-context";
 
 interface Channel {
   id: number;
@@ -35,6 +36,7 @@ interface Playlist {
 export function AppSidebar() {
   const pathname = usePathname();
   const { activeProfile } = useProfile();
+  const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
@@ -57,7 +59,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-          SafeVision
+          Kubi
         </Link>
       </SidebarHeader>
       <SidebarContent>
@@ -147,16 +149,18 @@ export function AppSidebar() {
           )}
         </SidebarMenu>
 
-        <SidebarMenu className="mt-auto pb-4">
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={pathname === "/admin"}>
-              <Link href="/admin">
-                <Shield className="h-4 w-4" />
-                <span>Admin</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {user?.isOperator && (
+          <SidebarMenu className="mt-auto pb-4">
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/admin"}>
+                <Link href="/admin">
+                  <Shield className="h-4 w-4" />
+                  <span>Admin</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarContent>
     </Sidebar>
   );

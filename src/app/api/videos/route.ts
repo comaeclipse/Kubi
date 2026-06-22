@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { videos, channels, videoProgress } from "@/db/schema";
-import { eq, desc, and, sql, or, ilike } from "drizzle-orm";
+import { videos, channels, videoProgress, userChannels } from "@/db/schema";
+import { eq, desc, and, sql, or, ilike, inArray } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
 
 // Bunny videos store no thumbnail in the DB — point them at the server-side
 // redirect endpoint that signs a fresh Bunny CDN thumbnail URL per request.
@@ -16,6 +17,9 @@ function mapVideoThumbnail<
 
 export async function GET(request: Request) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const url = new URL(request.url);
     const channelSlug = url.searchParams.get("channelId");
     const includeHidden = url.searchParams.get("includeHidden") === "true";
@@ -25,8 +29,24 @@ export async function GET(request: Request) {
     const sort = url.searchParams.get("sort") || "recent";
     const profileId = url.searchParams.get("profileId");
     const q = url.searchParams.get("q")?.trim();
+    // Operators can request the full master library (for management); everyone
+    // else is restricted to channels their account has enabled.
+    const all = url.searchParams.has("all") && auth.isOperator;
 
     const conditions = [];
+
+    if (!all) {
+      const enabledRows = await db
+        .select({ channelId: userChannels.channelId })
+        .from(userChannels)
+        .where(eq(userChannels.userId, auth.id));
+      const enabledIds = enabledRows.map((r) => r.channelId);
+      // No enabled channels => nothing to show.
+      if (enabledIds.length === 0) {
+        return NextResponse.json(limit > 0 ? { videos: [], total: 0, hasMore: false } : []);
+      }
+      conditions.push(inArray(videos.channelId, enabledIds));
+    }
 
     if (channelSlug) {
       if (/^\d+$/.test(channelSlug)) {

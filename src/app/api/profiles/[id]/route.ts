@@ -1,24 +1,26 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { profiles } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { and, eq } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
+import { encrypt } from "@/lib/crypto";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const { name, avatarColor } = await request.json();
 
     const updates: Record<string, string> = {};
+    let plainName: string | undefined;
     if (name && typeof name === "string" && name.trim().length > 0) {
-      updates.name = name.trim();
+      plainName = name.trim();
+      updates.name = encrypt(plainName);
     }
     if (avatarColor && typeof avatarColor === "string") {
       updates.avatarColor = avatarColor;
@@ -31,20 +33,23 @@ export async function PATCH(
       );
     }
 
+    // Scope the update to this user's own profile.
     const [updated] = await db
       .update(profiles)
       .set(updates)
-      .where(eq(profiles.id, parseInt(id)))
+      .where(
+        and(eq(profiles.id, parseInt(id)), eq(profiles.userId, auth.id))
+      )
       .returning();
 
     if (!updated) {
-      return NextResponse.json(
-        { error: "Profile not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    return NextResponse.json(updated);
+    return NextResponse.json({
+      ...updated,
+      name: plainName ?? undefined,
+    });
   } catch {
     return NextResponse.json(
       { error: "Failed to update profile" },
@@ -58,12 +63,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
-    await db.delete(profiles).where(eq(profiles.id, parseInt(id)));
+    await db
+      .delete(profiles)
+      .where(
+        and(eq(profiles.id, parseInt(id)), eq(profiles.userId, auth.id))
+      );
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(

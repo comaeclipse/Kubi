@@ -2,16 +2,15 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, videos, videoProgress } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { requireOperator } from "@/lib/auth";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const body = await request.json();
@@ -58,9 +57,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const channelId = parseInt(id);

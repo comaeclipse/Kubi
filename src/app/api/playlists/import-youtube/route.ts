@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { playlists, playlistVideos, videos } from "@/db/schema";
 import { inArray } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { fetchAllVideos } from "@/lib/youtube";
 
 function extractPlaylistId(url: string): string | null {
@@ -19,9 +19,8 @@ function extractPlaylistId(url: string): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
 
     const { name, url } = await request.json();
 
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     const [playlist] = await db
       .insert(playlists)
-      .values({ name: name.trim(), profileId: null })
+      .values({ userId: auth.id, name: name.trim(), profileId: null })
       .returning();
 
     if (matched.length > 0) {

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { playlists, playlistVideos, videos, channels, videoProgress } from "@/db/schema";
-import { eq, asc, sql } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { eq, and, asc, sql } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const profileId = searchParams.get("profileId");
@@ -16,13 +19,13 @@ export async function GET(
     const [playlist] = await db
       .select()
       .from(playlists)
-      .where(eq(playlists.id, parseInt(id)));
+      .where(and(eq(playlists.id, parseInt(id)), eq(playlists.userId, auth.id)));
 
     if (!playlist) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    // Access check: shared playlist or matching profile
+    // Within the account, a kid-owned playlist is only visible to that kid.
     if (playlist.profileId !== null) {
       if (!profileId || playlist.profileId !== parseInt(profileId)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -74,6 +77,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
     const { name } = await request.json();
 
@@ -81,26 +87,15 @@ export async function PATCH(
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const [playlist] = await db
-      .select()
-      .from(playlists)
-      .where(eq(playlists.id, parseInt(id)));
-
-    if (!playlist) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    if (playlist.profileId === null) {
-      if (!(await isAdmin())) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
     const [updated] = await db
       .update(playlists)
       .set({ name: name.trim() })
-      .where(eq(playlists.id, parseInt(id)))
+      .where(and(eq(playlists.id, parseInt(id)), eq(playlists.userId, auth.id)))
       .returning();
+
+    if (!updated) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     return NextResponse.json(updated);
   } catch {
@@ -116,24 +111,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+
     const { id } = await params;
-
-    const [playlist] = await db
-      .select()
-      .from(playlists)
-      .where(eq(playlists.id, parseInt(id)));
-
-    if (!playlist) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    if (playlist.profileId === null) {
-      if (!(await isAdmin())) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
-    await db.delete(playlists).where(eq(playlists.id, parseInt(id)));
+    await db
+      .delete(playlists)
+      .where(and(eq(playlists.id, parseInt(id)), eq(playlists.userId, auth.id)));
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(

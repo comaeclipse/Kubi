@@ -1,11 +1,22 @@
 "use client";
 
 import { type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { ProfileProvider, useProfile } from "@/context/profile-context";
 import { ProfilePicker } from "@/components/profile/profile-picker";
+import { AuthProvider } from "@/context/auth-context";
+
+// Routes that render bare (no sidebar/profile chrome): the auth flow.
+const BARE_PREFIXES = [
+  "/login",
+  "/register",
+  "/verify-email",
+  "/forgot-password",
+  "/reset-password",
+];
 
 function AppContent({ children }: { children: ReactNode }) {
   const { activeProfile, profiles, loading } = useProfile();
@@ -34,9 +45,21 @@ function AppContent({ children }: { children: ReactNode }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isBare = BARE_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
+
+  if (isBare) {
+    // Auth pages: no profile provider, no sidebar — just the page.
+    return <AuthProvider>{children}</AuthProvider>;
+  }
+
   return (
-    <ProfileProvider>
-      <AppContent>{children}</AppContent>
-    </ProfileProvider>
+    <AuthProvider>
+      <ProfileProvider>
+        <AppContent>{children}</AppContent>
+      </ProfileProvider>
+    </AuthProvider>
   );
 }

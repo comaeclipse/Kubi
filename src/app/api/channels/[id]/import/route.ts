@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, videos } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { isAdmin } from "@/lib/auth";
+import { requireOperator } from "@/lib/auth";
 import { fetchVideoPage, fetchVideoDetails } from "@/lib/youtube";
 
 // POST /api/channels/[id]/import
@@ -14,9 +14,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}));

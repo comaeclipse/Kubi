@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { videos } from "@/db/schema";
-import { isAdmin } from "@/lib/auth";
+import { requireOperator } from "@/lib/auth";
 import { fetchVideoDetails } from "@/lib/youtube";
 import { eq } from "drizzle-orm";
 
 export async function POST() {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await requireOperator();
+    if (auth instanceof NextResponse) return auth;
 
     // Get all video IDs from DB
     const allVideos = await db
