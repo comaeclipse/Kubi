@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { NoZoom } from "@/components/no-zoom";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +38,7 @@ export default function RootLayout({
         <NoZoom />
         <AppShell>{children}</AppShell>
         <Toaster />
+        <Analytics />
       </body>
     </html>
   );
