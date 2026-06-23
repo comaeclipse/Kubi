@@ -16,6 +16,10 @@ interface VideoPlayerProps {
   title: string;
   startSeconds?: number;
   profileId?: number;
+  // Embed via youtube-nocookie.com (privacy-enhanced mode) instead of
+  // youtube.com. Defaults to true so the cookie-setting host is never used
+  // sitewide; the nocookie host speaks the identical IFrame API, so controls,
+  // progress saving, and events are unaffected. Pass false only to opt out.
   useNoCookieHost?: boolean;
 }
 
@@ -32,7 +36,7 @@ export function VideoPlayer({
   title,
   startSeconds = 0,
   profileId,
-  useNoCookieHost = false,
+  useNoCookieHost = true,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeTargetRef = useRef<HTMLDivElement>(null);
