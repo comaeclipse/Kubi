@@ -114,12 +114,8 @@ export default function PrivacyPage() {
 
         <section id="whoshare">
           <h2 className="text-xl font-semibold text-foreground mt-8 mb-4">4. WHEN AND WITH WHOM DO WE SHARE YOUR INFORMATION?</h2>
-          <p className="mb-4">We share personal information only in the following situations:</p>
-          <ul className="list-disc pl-6 space-y-2 mb-4">
-            <li><strong>Service providers.</strong> We share information with the third parties that help us operate the Services (such as hosting, database, and payment providers), under written contracts.</li>
-            <li><strong>Business transfers.</strong> We may share or transfer your information in connection with a merger, financing, or acquisition of all or part of our business.</li>
-          </ul>
-          <p className="mb-4">We do not sell your personal information.</p>
+          <p className="mb-4">We share your personal information only with the service providers we rely on to operate the Services — such as our hosting, database, and payment providers — and only to the extent they need it to perform that work for us. We do not share your information with anyone else, and we do not allow these providers to use it for their own purposes.</p>
+          <p className="mb-4"><strong>We have never sold, rented, or traded your personal information, and we never will.</strong> We do not share it for advertising, and we will not transfer it to any third party for that third party's own use. This is a permanent commitment — not a current preference we might change later.</p>
         </section>
 
         <section id="cookies">
@@ -127,8 +123,16 @@ export default function PrivacyPage() {
           <p className="mb-4">
             We use cookies and similar technologies only as needed to maintain the security of the Services and your
             account, remember your preferences, and keep basic site functions working. We do not use cookies for
-            targeted advertising and we do not sell or share your information with advertisers. Most browsers let you
-            remove or reject cookies; doing so may affect certain features of the Services.
+            targeted advertising and we do not sell or share your information with advertisers.
+          </p>
+          <p className="mb-4">
+            <strong>Login session cookie.</strong> To keep you signed in, we set a single strictly necessary cookie that
+            stores a secure session token. It expires 30 days after you sign in, after which you will need to log in
+            again. This cookie is essential for you to access your account and is not used for tracking.
+          </p>
+          <p className="mb-4">
+            Most browsers let you remove or reject cookies; doing so may log you out or affect certain features of the
+            Services.
           </p>
         </section>
 
