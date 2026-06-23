@@ -1,6 +1,7 @@
 "use client";
 
 import { useProfile } from "@/context/profile-context";
+import { useAuth } from "@/context/auth-context";
 import { ProfileAvatar } from "./profile-avatar";
 import {
   Dialog,
@@ -12,8 +13,15 @@ import {
 
 export function ProfilePicker() {
   const { profiles, activeProfile, loading, switchProfile } = useProfile();
+  const { user } = useAuth();
 
-  const open = !loading && !activeProfile && profiles.length > 0;
+  // Hold the picker back until onboarding is finished — the onboarding wizard
+  // owns the screen (and creates the first profile) until then.
+  const open =
+    !loading &&
+    Boolean(user?.onboarded) &&
+    !activeProfile &&
+    profiles.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>

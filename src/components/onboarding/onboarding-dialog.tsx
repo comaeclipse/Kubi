@@ -11,8 +11,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
+import { ProfileAvatar } from "@/components/profile/profile-avatar";
+import { PROFILE_COLORS } from "@/lib/profile-colors";
 import { useAuth } from "@/context/auth-context";
+import { useProfile } from "@/context/profile-context";
 import { toast } from "sonner";
 
 interface Channel {
@@ -21,12 +25,23 @@ interface Channel {
   thumbnailUrl: string | null;
 }
 
-// First-run modal: shows the master channel library as a grid of greyed-out
-// icons that light up (full colour + check) as the parent picks them. Renders
-// only for signed-in accounts that haven't onboarded yet, and only when there
-// are channels to choose from.
+// First-run wizard. Step 1 sets up the parent's first kid profile (required);
+// step 2 shows the master channel library as a grid of greyed-out icons that
+// light up as the parent picks them. Renders only for signed-in accounts that
+// haven't onboarded yet. Channels are account-wide, so the profile step is
+// purely about getting at least one "who's watching" profile in place first.
 export function OnboardingDialog() {
   const { user, loading, refresh } = useAuth();
+  const { switchProfile, refreshProfiles } = useProfile();
+
+  const [step, setStep] = useState<"profile" | "channels">("profile");
+
+  // Profile step
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(PROFILE_COLORS[0].value);
+  const [creatingProfile, setCreatingProfile] = useState(false);
+
+  // Channels step
   const [channels, setChannels] = useState<Channel[] | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -48,6 +63,30 @@ export function OnboardingDialog() {
       cancelled = true;
     };
   }, [needsOnboarding]);
+
+  const createProfile = useCallback(async () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setCreatingProfile(true);
+    try {
+      const res = await fetch("/api/profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed, avatarColor: color }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const profile: { id: number } = await res.json();
+      await refreshProfiles();
+      // Mark it active so the "Who's watching?" picker doesn't immediately nag
+      // for the single profile we just created.
+      switchProfile(profile.id);
+      setStep("channels");
+    } catch {
+      toast.error("Couldn't create the profile. Please try again.");
+    } finally {
+      setCreatingProfile(false);
+    }
+  }, [name, color, refreshProfiles, switchProfile]);
 
   const toggle = useCallback((id: number) => {
     setSelected((prev) => {
@@ -93,7 +132,85 @@ export function OnboardingDialog() {
   );
 
   if (loading || !needsOnboarding) return null;
-  if (channels === null || channels.length === 0) return null;
+
+  if (step === "profile") {
+    return (
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-md"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Create your first profile</DialogTitle>
+            <DialogDescription>
+              Profiles let each kid track their own watch progress. Add one to
+              get started — you can add more anytime in Manage.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            <div className="flex justify-center">
+              <ProfileAvatar
+                name={name || "?"}
+                avatarColor={color}
+                size="xl"
+              />
+            </div>
+            <Input
+              placeholder="Profile name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={20}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim() && !creatingProfile) {
+                  createProfile();
+                }
+              }}
+            />
+            <div>
+              <p className="text-sm font-medium mb-2">Pick a color</p>
+              <div className="flex flex-wrap gap-2">
+                {PROFILE_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setColor(c.value)}
+                    className={`h-8 w-8 rounded-full transition-all ${
+                      color === c.value
+                        ? "ring-2 ring-offset-2 ring-foreground scale-110"
+                        : "hover:scale-105"
+                    }`}
+                    style={{ backgroundColor: c.value }}
+                    title={c.name}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={createProfile}
+              disabled={creatingProfile || !name.trim()}
+              className="w-full"
+            >
+              {creatingProfile ? "Creating…" : "Continue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Channels step. If the library is empty there's nothing to pick, so finish
+  // onboarding straight away rather than showing an empty grid.
+  if (channels !== null && channels.length === 0) {
+    return null;
+  }
 
   return (
     <Dialog open onOpenChange={() => {}}>
@@ -138,7 +255,7 @@ export function OnboardingDialog() {
         </div>
 
         <div className="grid max-h-[50vh] grid-cols-3 gap-3 overflow-y-auto py-1 sm:grid-cols-4">
-          {channels.map((ch) => {
+          {(channels ?? []).map((ch) => {
             const isSel = selected.has(ch.id);
             return (
               <button
