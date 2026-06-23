@@ -20,6 +20,7 @@ function RegisterForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [wasInvited, setWasInvited] = useState(false);
@@ -28,6 +29,10 @@ function RegisterForm() {
     e.preventDefault();
     if (password.length < 8) {
       toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (!agreed) {
+      toast.error("Please agree to the Terms and Privacy Policy to continue");
       return;
     }
     setLoading(true);
@@ -99,7 +104,29 @@ function RegisterForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              <Button type="submit" className="w-full" disabled={loading}>
+              <label className="flex items-start gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
+                  required
+                />
+                <span>
+                  I am 18 or older and the parent or guardian responsible for this
+                  account and any profiles I create on it. I have read and agree to
+                  the{" "}
+                  <Link href="/terms" target="_blank" className="text-primary hover:underline">
+                    Terms and Conditions
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" target="_blank" className="text-primary hover:underline">
+                    Privacy Policy
+                  </Link>
+                  .
+                </span>
+              </label>
+              <Button type="submit" className="w-full" disabled={loading || !agreed}>
                 {loading ? "Creating..." : "Sign up"}
               </Button>
             </form>
