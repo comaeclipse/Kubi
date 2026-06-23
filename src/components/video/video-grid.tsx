@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface Video {
   id: number;
   youtubeVideoId: string;
+  publicId?: string | null;
   youtubeChannelId?: string | null;
   title: string;
   thumbnailUrl: string;

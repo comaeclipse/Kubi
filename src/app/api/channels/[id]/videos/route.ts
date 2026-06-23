@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { channels, videos, videoProgress } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireOperator } from "@/lib/auth";
+import { videoIdBlindIndex } from "@/lib/crypto";
 
 // Add a Bunny video to a channel by its Bunny video GUID. Manual metadata:
 // the title is supplied by the admin; thumbnail/duration are derived/omitted.
@@ -47,6 +48,7 @@ export async function POST(
       .values({
         channelId,
         youtubeVideoId: bunnyVideoId,
+        youtubeVideoIdHash: videoIdBlindIndex(bunnyVideoId),
         title,
         publishedAt: new Date().toISOString(),
         source: "bunny",
@@ -100,7 +102,7 @@ export async function DELETE(
     // Clean up progress rows (no FK constraint reaches video_progress).
     await db
       .delete(videoProgress)
-      .where(eq(videoProgress.youtubeVideoId, video.youtubeVideoId));
+      .where(eq(videoProgress.videoIdHash, videoIdBlindIndex(video.youtubeVideoId)));
 
     // Deleting the video cascades to playlist_videos.
     await db.delete(videos).where(eq(videos.id, videoId));

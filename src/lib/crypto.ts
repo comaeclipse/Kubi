@@ -81,6 +81,17 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+// Deterministic HMAC of a video id — lets us link watch history to a video
+// without storing the plaintext id in video_progress, so a DB leak / raw DB
+// access can't reveal which videos a profile watched.
+export function videoIdBlindIndex(youtubeVideoId: string): string {
+  const key = getKey();
+  return crypto
+    .createHmac("sha256", key)
+    .update(youtubeVideoId)
+    .digest("base64");
+}
+
 // Opaque, URL-safe token for sessions and email links.
 export function generateToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString("base64url");

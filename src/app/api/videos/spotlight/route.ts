@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
     const progressJoinCondition = profileId
       ? and(
-          eq(videos.youtubeVideoId, videoProgress.youtubeVideoId),
+          eq(videos.youtubeVideoIdHash, videoProgress.videoIdHash),
           eq(videoProgress.profileId, parseInt(profileId))
         )
       : sql`false`;
@@ -62,6 +62,7 @@ export async function GET(request: Request) {
             .select({
               id: videos.id,
               youtubeVideoId: videos.youtubeVideoId,
+              publicId: videos.publicId,
               title: videos.title,
               thumbnailUrl: videos.thumbnailUrl,
               publishedAt: videos.publishedAt,

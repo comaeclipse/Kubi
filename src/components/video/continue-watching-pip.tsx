@@ -10,6 +10,7 @@ import { isoToSeconds, formatDuration } from "@/lib/youtube";
 
 interface ContinueWatchingVideo {
   youtubeVideoId: string;
+  publicId: string | null;
   progressSeconds: number;
   title: string;
   thumbnailUrl: string;
@@ -65,7 +66,7 @@ export function ContinueWatchingPip() {
 
   // Animate in after data loads
   useEffect(() => {
-    if (video && !dismissed && currentlyWatchingId !== video.youtubeVideoId) {
+    if (video && !dismissed && currentlyWatchingId !== (video.publicId ?? video.youtubeVideoId)) {
       const timer = setTimeout(() => setVisible(true), 300);
       return () => clearTimeout(timer);
     }
@@ -75,7 +76,7 @@ export function ContinueWatchingPip() {
   if (
     !video ||
     dismissed ||
-    currentlyWatchingId === video.youtubeVideoId
+    currentlyWatchingId === (video.publicId ?? video.youtubeVideoId)
   ) {
     return null;
   }
@@ -97,7 +98,7 @@ export function ContinueWatchingPip() {
       }`}
     >
       <div className="relative">
-        <Link href={`/watch/${video.youtubeVideoId}`}>
+        <Link href={`/watch/${(video.publicId ?? video.youtubeVideoId)}`}>
           <div className="relative aspect-video w-full bg-muted group cursor-pointer">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -131,7 +132,7 @@ export function ContinueWatchingPip() {
         </button>
       </div>
       <Link
-        href={`/watch/${video.youtubeVideoId}`}
+        href={`/watch/${(video.publicId ?? video.youtubeVideoId)}`}
         className="block px-3 py-2"
       >
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">

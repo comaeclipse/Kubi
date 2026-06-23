@@ -31,7 +31,9 @@ export const users = pgTable("users", {
   // Subscription
   stripeCustomerId: text("stripe_customer_id"),
   subscriptionId: text("subscription_id"),
-  // Stripe subscription status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete'
+  // 'stripe' | 'paypal' — which provider owns the active subscription. Null until subscribed.
+  billingProvider: text("billing_provider"),
+  // Normalized subscription status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete'
   subscriptionStatus: text("subscription_status"),
   // Set to createdAt + 30 days on registration; access is granted while this is in the future.
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
@@ -107,24 +109,40 @@ export const userChannels = pgTable(
   })
 );
 
-export const videos = pgTable("videos", {
-  id: serial("id").primaryKey(),
-  channelId: integer("channel_id")
-    .notNull()
-    .references(() => channels.id, { onDelete: "cascade" }),
-  // For YouTube videos this is the YT video id; for Bunny videos it's the
-  // Bunny video GUID. Always unique and used as the /watch/[videoId] route key.
-  youtubeVideoId: text("youtube_video_id").notNull().unique(),
-  title: text("title").notNull(),
-  // Nullable: Bunny thumbnails are derived/served via /api/bunny/thumbnail.
-  thumbnailUrl: text("thumbnail_url"),
-  publishedAt: text("published_at").notNull(),
-  duration: text("duration"),
-  hidden: boolean("hidden").notNull().default(false),
-  isShort: boolean("is_short").notNull().default(false),
-  source: text("source").notNull().default("youtube"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const videos = pgTable(
+  "videos",
+  {
+    id: serial("id").primaryKey(),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    // For YouTube videos this is the YT video id; for Bunny videos it's the
+    // Bunny video GUID. Always unique and used as the /watch/[videoId] route key.
+    youtubeVideoId: text("youtube_video_id").notNull().unique(),
+    // Keyed HMAC of youtubeVideoId (videoIdBlindIndex). 1:1 with youtubeVideoId;
+    // video_progress stores only this hash, and joins to it instead of the
+    // plaintext id so watch history is opaque to raw DB access.
+    youtubeVideoIdHash: text("youtube_video_id_hash"),
+    // Scrambled 11-char watch-URL id (YouTube videos only; null for Bunny, which
+    // keeps its GUID). Keeps the real YouTube id out of the browser URL bar.
+    publicId: text("public_id"),
+    title: text("title").notNull(),
+    // Nullable: Bunny thumbnails are derived/served via /api/bunny/thumbnail.
+    thumbnailUrl: text("thumbnail_url"),
+    publishedAt: text("published_at").notNull(),
+    duration: text("duration"),
+    hidden: boolean("hidden").notNull().default(false),
+    isShort: boolean("is_short").notNull().default(false),
+    source: text("source").notNull().default("youtube"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    videoIdHashUnique: uniqueIndex("videos_youtube_video_id_hash_unique").on(
+      table.youtubeVideoIdHash
+    ),
+    publicIdUnique: uniqueIndex("videos_public_id_unique").on(table.publicId),
+  })
+);
 
 export const labels = pgTable(
   "labels",
@@ -230,12 +248,15 @@ export const videoProgress = pgTable(
     profileId: integer("profile_id")
       .notNull()
       .references(() => profiles.id, { onDelete: "cascade" }),
-    youtubeVideoId: text("youtube_video_id").notNull(),
+    // Keyed HMAC of the video id (videoIdBlindIndex), not the plaintext id, so
+    // raw DB access can't reveal which videos a profile watched. Joins to
+    // videos.youtubeVideoIdHash to recover the plaintext id for display.
+    videoIdHash: text("video_id_hash").notNull(),
     progressSeconds: integer("progress_seconds").notNull().default(0),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.profileId, table.youtubeVideoId] }),
+    pk: primaryKey({ columns: [table.profileId, table.videoIdHash] }),
   })
 );
 

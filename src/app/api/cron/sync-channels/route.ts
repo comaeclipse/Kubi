@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { channels, videos, settings } from "@/db/schema";
 import { eq, isNull } from "drizzle-orm";
 import { fetchAllVideos, fetchVideoDetails } from "@/lib/youtube";
+import { videoIdBlindIndex } from "@/lib/crypto";
+import { generatePublicId } from "@/lib/public-id";
 
 const HISTORY_KEY = "cron_sync_history";
 const MAX_HISTORY = 20;
@@ -72,6 +74,8 @@ export async function GET(request: Request) {
               batch.map((v) => ({
                 channelId: channel.id,
                 youtubeVideoId: v.youtubeVideoId,
+                youtubeVideoIdHash: videoIdBlindIndex(v.youtubeVideoId),
+                publicId: generatePublicId(),
                 title: v.title,
                 thumbnailUrl: v.thumbnailUrl,
                 publishedAt: v.publishedAt,

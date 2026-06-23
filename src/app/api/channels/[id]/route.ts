@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { channels, videos, videoProgress } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { requireOperator } from "@/lib/auth";
+import { videoIdBlindIndex } from "@/lib/crypto";
 
 export async function PATCH(
   request: Request,
@@ -73,8 +74,8 @@ export async function DELETE(
     if (channelVideos.length > 0) {
       await db.delete(videoProgress).where(
         inArray(
-          videoProgress.youtubeVideoId,
-          channelVideos.map((v) => v.youtubeVideoId)
+          videoProgress.videoIdHash,
+          channelVideos.map((v) => videoIdBlindIndex(v.youtubeVideoId))
         )
       );
     }

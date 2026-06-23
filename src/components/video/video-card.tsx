@@ -10,6 +10,9 @@ import { formatDuration, isoToSeconds } from "@/lib/youtube";
 interface VideoCardProps {
   id: number;
   youtubeVideoId: string;
+  // Scrambled watch-URL id (YouTube videos). Null/absent for Bunny videos,
+  // which fall back to their GUID.
+  publicId?: string | null;
   title: string;
   thumbnailUrl: string;
   publishedAt: string;
@@ -22,6 +25,7 @@ interface VideoCardProps {
 
 export function VideoCard({
   youtubeVideoId,
+  publicId,
   title,
   thumbnailUrl,
   publishedAt,
@@ -40,7 +44,7 @@ export function VideoCard({
       : 0;
 
   return (
-    <Link href={`/watch/${youtubeVideoId}`} className="group block">
+    <Link href={`/watch/${publicId ?? youtubeVideoId}`} className="group block">
       <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
         {thumbnailUrl && !imgError ? (
           /* eslint-disable-next-line @next/next/no-img-element */

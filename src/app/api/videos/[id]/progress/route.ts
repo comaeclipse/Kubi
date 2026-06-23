@@ -4,6 +4,8 @@ import { videoProgress } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
+import { videoIdBlindIndex } from "@/lib/crypto";
+import { resolveYoutubeVideoId } from "@/lib/public-id";
 
 export async function GET(
   req: NextRequest,
@@ -12,10 +14,15 @@ export async function GET(
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
 
-  const { id: youtubeVideoId } = await params;
+  const { id: slug } = await params;
   const profileId = req.nextUrl.searchParams.get("profileId");
 
   if (!profileId || !(await userOwnsProfile(auth.id, parseInt(profileId)))) {
+    return NextResponse.json({ progressSeconds: 0 });
+  }
+
+  const youtubeVideoId = await resolveYoutubeVideoId(slug);
+  if (!youtubeVideoId) {
     return NextResponse.json({ progressSeconds: 0 });
   }
 
@@ -25,7 +32,7 @@ export async function GET(
     .where(
       and(
         eq(videoProgress.profileId, parseInt(profileId)),
-        eq(videoProgress.youtubeVideoId, youtubeVideoId)
+        eq(videoProgress.videoIdHash, videoIdBlindIndex(youtubeVideoId))
       )
     )
     .limit(1);
@@ -41,7 +48,7 @@ export async function POST(
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
 
-  const { id: youtubeVideoId } = await params;
+  const { id: slug } = await params;
   const body = await req.json();
   const seconds = Number(body?.seconds ?? 0);
   const profileId = Number(body?.profileId);
@@ -58,16 +65,21 @@ export async function POST(
     return NextResponse.json({ error: "Invalid seconds value" }, { status: 400 });
   }
 
+  const youtubeVideoId = await resolveYoutubeVideoId(slug);
+  if (!youtubeVideoId) {
+    return NextResponse.json({ error: "Video not found" }, { status: 404 });
+  }
+
   await db
     .insert(videoProgress)
     .values({
       profileId,
-      youtubeVideoId,
+      videoIdHash: videoIdBlindIndex(youtubeVideoId),
       progressSeconds: Math.floor(seconds),
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: [videoProgress.profileId, videoProgress.youtubeVideoId],
+      target: [videoProgress.profileId, videoProgress.videoIdHash],
       set: {
         progressSeconds: Math.floor(seconds),
         updatedAt: new Date(),

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { videos, channels, videoProgress, userChannels } from "@/db/schema";
-import { eq, and, desc, ne, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, ne, sql, inArray, or } from "drizzle-orm";
 import { requireUser, requireOperator } from "@/lib/auth";
+import { videoIdBlindIndex } from "@/lib/crypto";
 import { extractKeywords } from "@/lib/related-videos";
 import { buildEmbedUrl, resolveLibraryId } from "@/lib/bunny";
 import { visibleChannel } from "@/lib/channel-visibility";
@@ -47,7 +48,7 @@ export async function GET(
 
     const progressJoinCondition = profileId
       ? and(
-          eq(videos.youtubeVideoId, videoProgress.youtubeVideoId),
+          eq(videos.youtubeVideoIdHash, videoProgress.videoIdHash),
           eq(videoProgress.profileId, parseInt(profileId))
         )
       : sql`false`;
@@ -57,6 +58,7 @@ export async function GET(
         id: videos.id,
         channelId: videos.channelId,
         youtubeVideoId: videos.youtubeVideoId,
+        publicId: videos.publicId,
         youtubeChannelId: channels.youtubeChannelId,
         title: videos.title,
         thumbnailUrl: videos.thumbnailUrl,
@@ -75,7 +77,12 @@ export async function GET(
       .leftJoin(videoProgress, progressJoinCondition)
       .where(
         and(
-          eq(videos.youtubeVideoId, id),
+          // Scrambled-only: YouTube videos resolve by public_id; the real id is
+          // never accepted. Bunny videos keep resolving by their GUID.
+          or(
+            eq(videos.publicId, id),
+            and(eq(videos.source, "bunny"), eq(videos.youtubeVideoId, id))
+          ),
           enabledFilter(videos.channelId),
           // Blocks operators/other users from opening someone's private video.
           visibleChannel(auth.id)
@@ -92,6 +99,7 @@ export async function GET(
         id: videos.id,
         channelId: videos.channelId,
         youtubeVideoId: videos.youtubeVideoId,
+        publicId: videos.publicId,
         youtubeChannelId: channels.youtubeChannelId,
         title: videos.title,
         thumbnailUrl: videos.thumbnailUrl,
@@ -140,6 +148,7 @@ export async function GET(
           id: videos.id,
           channelId: videos.channelId,
           youtubeVideoId: videos.youtubeVideoId,
+          publicId: videos.publicId,
           youtubeChannelId: channels.youtubeChannelId,
           title: videos.title,
           thumbnailUrl: videos.thumbnailUrl,
@@ -269,7 +278,7 @@ export async function DELETE(
     // Clean up progress rows (no FK constraint reaches video_progress).
     await db
       .delete(videoProgress)
-      .where(eq(videoProgress.youtubeVideoId, video.youtubeVideoId));
+      .where(eq(videoProgress.videoIdHash, videoIdBlindIndex(video.youtubeVideoId)));
 
     // Deleting the video cascades to playlist_videos.
     await db.delete(videos).where(eq(videos.id, videoId));

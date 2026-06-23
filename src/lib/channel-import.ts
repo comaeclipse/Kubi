@@ -1,6 +1,8 @@
 import { db } from "@/db";
 import { videos } from "@/db/schema";
 import { fetchVideoPage, fetchVideoDetails } from "@/lib/youtube";
+import { videoIdBlindIndex } from "@/lib/crypto";
+import { generatePublicId } from "@/lib/public-id";
 
 export interface ImportPageResult {
   imported: number;
@@ -35,6 +37,8 @@ export async function importVideoPage(
       videoList.map((v) => ({
         channelId,
         youtubeVideoId: v.youtubeVideoId,
+        youtubeVideoIdHash: videoIdBlindIndex(v.youtubeVideoId),
+        publicId: generatePublicId(),
         title: v.title,
         thumbnailUrl: v.thumbnailUrl,
         publishedAt: v.publishedAt,

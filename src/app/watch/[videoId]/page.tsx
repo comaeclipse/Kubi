@@ -12,6 +12,7 @@ import { useProfile } from "@/context/profile-context";
 interface Video {
   id: number;
   youtubeVideoId: string;
+  publicId?: string | null;
   youtubeChannelId: string | null;
   title: string;
   thumbnailUrl: string;
@@ -81,6 +82,7 @@ export default function WatchPage() {
       ) : (
         <VideoPlayer
           youtubeVideoId={video.youtubeVideoId}
+          progressSlug={params.videoId}
           title={video.title}
           startSeconds={startSeconds}
           profileId={activeProfile?.id}

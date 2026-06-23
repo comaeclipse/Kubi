@@ -13,7 +13,7 @@ import {
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { PROFILE_COLORS } from "@/lib/profile-colors";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, History } from "lucide-react";
 
 interface Profile {
   id: number;
@@ -32,6 +32,9 @@ export function ProfileManager({ profiles, onRefresh }: ProfileManagerProps) {
   const [name, setName] = useState("");
   const [selectedColor, setSelectedColor] = useState(PROFILE_COLORS[0].value);
   const [saving, setSaving] = useState(false);
+  // Profile whose watch history is pending a confirm-to-clear.
+  const [clearingProfile, setClearingProfile] = useState<Profile | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   function openCreateDialog() {
     setEditingProfile(null);
@@ -89,6 +92,23 @@ export function ProfileManager({ profiles, onRefresh }: ProfileManagerProps) {
       await onRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
+    }
+  }
+
+  async function handleClearHistory() {
+    if (!clearingProfile) return;
+    setClearing(true);
+    try {
+      const res = await fetch(`/api/profiles/${clearingProfile.id}/history`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to clear watch history");
+      toast.success(`Cleared ${clearingProfile.name}'s watch history`);
+      setClearingProfile(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -178,6 +198,14 @@ export function ProfileManager({ profiles, onRefresh }: ProfileManagerProps) {
               <Button
                 variant="ghost"
                 size="icon"
+                onClick={() => setClearingProfile(profile)}
+                title="Clear watch history"
+              >
+                <History className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => openEditDialog(profile)}
                 title="Edit profile"
               >
@@ -195,6 +223,45 @@ export function ProfileManager({ profiles, onRefresh }: ProfileManagerProps) {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={clearingProfile !== null}
+        onOpenChange={(open) => {
+          if (!open) setClearingProfile(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear watch history</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Clear all watch history for{" "}
+              <span className="font-medium text-foreground">
+                {clearingProfile?.name}
+              </span>
+              ? This removes their resume progress and recently-watched list.
+              This can&apos;t be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setClearingProfile(null)}
+                disabled={clearing}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleClearHistory}
+                disabled={clearing}
+              >
+                {clearing ? "Clearing..." : "Clear history"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

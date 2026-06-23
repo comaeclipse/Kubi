@@ -36,6 +36,7 @@ export async function GET(
       .select({
         id: videos.id,
         youtubeVideoId: videos.youtubeVideoId,
+        publicId: videos.publicId,
         title: videos.title,
         thumbnailUrl: videos.thumbnailUrl,
         publishedAt: videos.publishedAt,
@@ -49,7 +50,7 @@ export async function GET(
           ? sql<number | null>`(
               SELECT ${videoProgress.progressSeconds}
               FROM ${videoProgress}
-              WHERE ${videoProgress.youtubeVideoId} = ${videos.youtubeVideoId}
+              WHERE ${videoProgress.videoIdHash} = ${videos.youtubeVideoIdHash}
                 AND ${videoProgress.profileId} = ${parseInt(profileId)}
             )`
           : sql<null>`NULL`,

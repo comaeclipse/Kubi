@@ -4,6 +4,8 @@ import { channels, videos } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { requireOperator } from "@/lib/auth";
 import { fetchAllVideos, fetchVideoDetails } from "@/lib/youtube";
+import { videoIdBlindIndex } from "@/lib/crypto";
+import { generatePublicId } from "@/lib/public-id";
 
 export async function POST(
   _request: Request,
@@ -64,6 +66,8 @@ export async function POST(
           batch.map((v) => ({
             channelId,
             youtubeVideoId: v.youtubeVideoId,
+            youtubeVideoIdHash: videoIdBlindIndex(v.youtubeVideoId),
+            publicId: generatePublicId(),
             title: v.title,
             thumbnailUrl: v.thumbnailUrl,
             publishedAt: v.publishedAt,

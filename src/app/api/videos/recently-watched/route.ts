@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
     db
       .select({
         id: videos.id,
-        youtubeVideoId: videoProgress.youtubeVideoId,
+        youtubeVideoId: videos.youtubeVideoId,
+        publicId: videos.publicId,
         title: videos.title,
         thumbnailUrl: videos.thumbnailUrl,
         publishedAt: videos.publishedAt,
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
         progressSeconds: videoProgress.progressSeconds,
       })
       .from(videoProgress)
-      .innerJoin(videos, eq(videos.youtubeVideoId, videoProgress.youtubeVideoId))
+      .innerJoin(videos, eq(videos.youtubeVideoIdHash, videoProgress.videoIdHash))
       .leftJoin(channels, eq(videos.channelId, channels.id))
       .where(whereClause)
       .orderBy(desc(videoProgress.updatedAt))
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
     db
       .select({ count: count() })
       .from(videoProgress)
-      .innerJoin(videos, eq(videos.youtubeVideoId, videoProgress.youtubeVideoId))
+      .innerJoin(videos, eq(videos.youtubeVideoIdHash, videoProgress.videoIdHash))
       .where(whereClause),
   ]);
 

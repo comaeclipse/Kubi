@@ -10,6 +10,9 @@ declare global {
 
 interface VideoPlayerProps {
   youtubeVideoId: string;
+  // The /watch/[slug] route id (scrambled publicId). Progress is saved against
+  // this so the real youtube id never appears in app request URLs.
+  progressSlug: string;
   title: string;
   startSeconds?: number;
   profileId?: number;
@@ -25,6 +28,7 @@ const TOUCH_CONTROLS_HIDE_MS = 4000;
 
 export function VideoPlayer({
   youtubeVideoId,
+  progressSlug,
   title,
   startSeconds = 0,
   profileId,
@@ -68,7 +72,7 @@ export function VideoPlayer({
     async (seconds: number) => {
       if (!profileIdRef.current) return;
       try {
-        await fetch(`/api/videos/${youtubeVideoId}/progress`, {
+        await fetch(`/api/videos/${progressSlug}/progress`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -80,7 +84,7 @@ export function VideoPlayer({
         // Silently ignore network errors during progress saves
       }
     },
-    [youtubeVideoId]
+    [progressSlug]
   );
 
   function startSaveInterval(player: YT.Player) {

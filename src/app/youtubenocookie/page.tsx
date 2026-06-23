@@ -31,6 +31,7 @@ export default function YouTubeNoCookieDemoPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <VideoPlayer
         youtubeVideoId={DEMO_VIDEO.youtubeVideoId}
+        progressSlug={DEMO_VIDEO.youtubeVideoId}
         title={DEMO_VIDEO.title}
         startSeconds={activeProfile ? startSeconds : 0}
         profileId={activeProfile?.id}

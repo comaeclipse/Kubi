@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
 
   const rows = await db
     .select({
-      youtubeVideoId: videoProgress.youtubeVideoId,
+      youtubeVideoId: videos.youtubeVideoId,
+      publicId: videos.publicId,
       progressSeconds: videoProgress.progressSeconds,
       updatedAt: videoProgress.updatedAt,
       videoId: videos.id,
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
       youtubeChannelId: channels.youtubeChannelId,
     })
     .from(videoProgress)
-    .innerJoin(videos, eq(videos.youtubeVideoId, videoProgress.youtubeVideoId))
+    .innerJoin(videos, eq(videos.youtubeVideoIdHash, videoProgress.videoIdHash))
     .leftJoin(channels, eq(videos.channelId, channels.id))
     .where(
       and(

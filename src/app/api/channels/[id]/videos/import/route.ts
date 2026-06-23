@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { channels, videos } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { requireOperator } from "@/lib/auth";
+import { videoIdBlindIndex } from "@/lib/crypto";
 import {
   listLibraryVideos,
   resolveLibraryId,
@@ -60,6 +61,7 @@ export async function POST(
       .map((v) => ({
         channelId,
         youtubeVideoId: v.guid,
+        youtubeVideoIdHash: videoIdBlindIndex(v.guid),
         title: v.title,
         duration: secondsToIso8601(v.lengthSeconds),
         publishedAt: v.dateUploaded,
