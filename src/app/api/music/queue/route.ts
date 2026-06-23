@@ -10,6 +10,7 @@ import {
   videos,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { visibleChannel } from "@/lib/channel-visibility";
 
 const MAX_LIMIT = 20;
 const MAX_EXCLUSIONS = 200;
@@ -47,10 +48,19 @@ export async function POST(request: Request) {
       .innerJoin(labels, eq(videoLabels.labelId, labels.id))
       .where(and(eq(labels.slug, "music"), eq(labels.kind, "category")));
 
+    // Restrict to channels the caller may see. Private channels carry no labels
+    // so wouldn't match music anyway, but guard explicitly — this route is not
+    // otherwise enablement-scoped.
+    const visibleChannelIds = db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(visibleChannel(auth.id));
+
     const eligibility = and(
       eq(videos.source, "youtube"),
       eq(videos.hidden, false),
       eq(videos.isShort, false),
+      inArray(videos.channelId, visibleChannelIds),
       or(
         inArray(videos.channelId, musicChannelIds),
         inArray(videos.id, musicVideoIds)
@@ -86,6 +96,7 @@ export async function POST(request: Request) {
             eq(videos.source, "youtube"),
             eq(videos.hidden, false),
             eq(videos.isShort, false),
+            inArray(videos.channelId, visibleChannelIds),
             or(
               inArray(videos.channelId, musicChannelIds),
               inArray(videos.id, musicVideoIds)

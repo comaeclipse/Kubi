@@ -33,7 +33,7 @@ export const users = pgTable("users", {
   subscriptionId: text("subscription_id"),
   // Stripe subscription status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete'
   subscriptionStatus: text("subscription_status"),
-  // Set to createdAt + 14 days on registration; access is granted while this is in the future.
+  // Set to createdAt + 30 days on registration; access is granted while this is in the future.
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   currentPeriodEndsAt: timestamp("current_period_ends_at", { withTimezone: true }),
   // Set when the account registered through an invite link; set-null on invite
@@ -80,6 +80,12 @@ export const channels = pgTable("channels", {
   bunnyCdnHostname: text("bunny_cdn_hostname"),
   // GUID of the video whose thumbnail is used as this channel's cover.
   bunnyCoverVideoId: text("bunny_cover_video_id"),
+  // Null = master library (operator-curated, shared). Non-null = private channel
+  // owned by and visible to only this user. Cascade keeps things tidy if the
+  // owner is deleted (their videos cascade from channels in turn).
+  ownerUserId: integer("owner_user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

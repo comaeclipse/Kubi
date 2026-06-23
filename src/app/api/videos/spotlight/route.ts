@@ -4,6 +4,7 @@ import { videos, channels, videoProgress, userChannels } from "@/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
+import { visibleChannel } from "@/lib/channel-visibility";
 
 export async function GET(request: Request) {
   try {
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
         videos,
         and(eq(videos.channelId, channels.id), eq(videos.hidden, false))
       )
-      .where(inArray(channels.id, enabledIds))
+      .where(and(inArray(channels.id, enabledIds), visibleChannel(auth.id)))
       .groupBy(channels.id)
       .orderBy(sql`RANDOM()`);
 

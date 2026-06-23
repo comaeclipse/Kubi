@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ProfileManager } from "@/components/admin/profile-manager";
 import { ChannelToggleList } from "@/components/admin/channel-toggle-list";
+import { MyChannelManager } from "@/components/channel/my-channel-manager";
 import { Separator } from "@/components/ui/separator";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
@@ -38,6 +39,10 @@ export default function AdminFamilyPage() {
       <Separator />
 
       <ChannelToggleList />
+
+      <Separator />
+
+      <MyChannelManager />
     </div>
   );
 }

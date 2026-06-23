@@ -5,6 +5,7 @@ import { eq, and, desc, ne, sql, inArray } from "drizzle-orm";
 import { requireUser, requireOperator } from "@/lib/auth";
 import { extractKeywords } from "@/lib/related-videos";
 import { buildEmbedUrl, resolveLibraryId } from "@/lib/bunny";
+import { visibleChannel } from "@/lib/channel-visibility";
 
 // Point Bunny videos at the signed-thumbnail redirect endpoint.
 function mapThumb<
@@ -72,7 +73,14 @@ export async function GET(
       .from(videos)
       .leftJoin(channels, eq(videos.channelId, channels.id))
       .leftJoin(videoProgress, progressJoinCondition)
-      .where(and(eq(videos.youtubeVideoId, id), enabledFilter(videos.channelId)))
+      .where(
+        and(
+          eq(videos.youtubeVideoId, id),
+          enabledFilter(videos.channelId),
+          // Blocks operators/other users from opening someone's private video.
+          visibleChannel(auth.id)
+        )
+      )
       .limit(1);
 
     if (!video) {
@@ -153,6 +161,7 @@ export async function GET(
             eq(videos.hidden, false),
             eq(videos.isShort, false),
             enabledFilter(videos.channelId),
+            visibleChannel(auth.id),
             sql`(${sql.join(orConditions, sql` OR `)})`
           )
         )

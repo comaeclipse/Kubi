@@ -10,6 +10,7 @@ import {
 } from "@/lib/youtube";
 import { DEFAULT_CDN_HOSTNAME, DEFAULT_LIBRARY_ID } from "@/lib/bunny";
 import { getChannelLabelMap } from "@/lib/taxonomy";
+import { visibleChannel } from "@/lib/channel-visibility";
 
 // GET /api/channels        -> channels this account has enabled (kid-facing)
 // GET /api/channels?all=1  -> the full master library annotated with `enabled`
@@ -21,9 +22,12 @@ export async function GET(request: Request) {
 
     const all = new URL(request.url).searchParams.has("all");
 
+    // Master library + the caller's own private channels. Other users' (and the
+    // operator's view of other users') private channels never appear here.
     const allChannels = await db
       .select()
       .from(channels)
+      .where(visibleChannel(auth.id))
       .orderBy(asc(channels.title));
 
     const enabledRows = await db

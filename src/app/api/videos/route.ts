@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { videos, channels, videoProgress, userChannels } from "@/db/schema";
-import { eq, desc, and, sql, or, ilike, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getVideoLabelMap } from "@/lib/taxonomy";
+import { visibleChannel } from "@/lib/channel-visibility";
 
 // Bunny videos store no thumbnail in the DB — point them at the server-side
 // redirect endpoint that signs a fresh Bunny CDN thumbnail URL per request.
@@ -47,6 +48,11 @@ export async function GET(request: Request) {
         return NextResponse.json(limit > 0 ? { videos: [], total: 0, hasMore: false } : []);
       }
       conditions.push(inArray(videos.channelId, enabledIds));
+      // Defense-in-depth: never surface another user's private channel.
+      conditions.push(visibleChannel(auth.id));
+    } else {
+      // Operator master-library browse — exclude all private channels.
+      conditions.push(isNull(channels.ownerUserId));
     }
 
     if (channelSlug) {

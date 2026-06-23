@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, userChannels, users } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
+import { visibleChannel } from "@/lib/channel-visibility";
 import { checkBotId } from "botid/server";
 
 // Finishes first-run onboarding: enables the chosen master-library channels for
@@ -23,11 +24,11 @@ export async function POST(request: Request) {
       : [];
 
     if (requestedIds.length > 0) {
-      // Only enable ids that actually exist in the master library.
+      // Only enable ids the caller may actually see (master or their own).
       const valid = await db
         .select({ id: channels.id })
         .from(channels)
-        .where(inArray(channels.id, requestedIds));
+        .where(and(inArray(channels.id, requestedIds), visibleChannel(auth.id)));
 
       if (valid.length > 0) {
         await db

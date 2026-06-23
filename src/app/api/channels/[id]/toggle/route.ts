@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { channels, userChannels } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
+import { visibleChannel } from "@/lib/channel-visibility";
 
 // Enable a master-library channel for the current account.
 export async function POST(
@@ -18,11 +19,12 @@ export async function POST(
       return NextResponse.json({ error: "Invalid channel" }, { status: 400 });
     }
 
-    // Ensure the channel exists in the master library.
+    // Ensure the channel is one this account may see (master or its own
+    // private channel) — stops a user enabling another user's private channel.
     const [channel] = await db
       .select({ id: channels.id })
       .from(channels)
-      .where(eq(channels.id, channelId));
+      .where(and(eq(channels.id, channelId), visibleChannel(auth.id)));
     if (!channel) {
       return NextResponse.json({ error: "Channel not found" }, { status: 404 });
     }
