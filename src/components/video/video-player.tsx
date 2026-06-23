@@ -13,6 +13,7 @@ interface VideoPlayerProps {
   title: string;
   startSeconds?: number;
   profileId?: number;
+  useNoCookieHost?: boolean;
 }
 
 const SAVE_INTERVAL_MS = 10_000;
@@ -27,6 +28,7 @@ export function VideoPlayer({
   title,
   startSeconds = 0,
   profileId,
+  useNoCookieHost = false,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeTargetRef = useRef<HTMLDivElement>(null);
@@ -129,6 +131,9 @@ export function VideoPlayer({
     if (!iframeTargetRef.current) return;
 
     playerRef.current = new window.YT.Player(iframeTargetRef.current, {
+      ...(useNoCookieHost
+        ? { host: "https://www.youtube-nocookie.com" }
+        : {}),
       videoId: youtubeVideoId,
       playerVars: {
         start: Math.floor(startSecondsRef.current),
@@ -214,7 +219,7 @@ export function VideoPlayer({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [youtubeVideoId]);
+  }, [youtubeVideoId, useNoCookieHost]);
 
   // --- Custom controls ---
 
