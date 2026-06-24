@@ -2,21 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// Static demo of the "native YouTube fullscreen" path for iOS.
+// Test bench for getting a usable fullscreen button on iOS WITHOUT exposing
+// clickable YouTube chrome ("Watch on YouTube", logo, "More videos", etc.).
 //
-// Unlike the real player (custom controls, controls:0, iframe wrapped in
-// pointer-events-none), this demo intentionally:
-//   1. shows YouTube's NATIVE controls (controls:1, fs:1) so YouTube's own ⛶
-//      fullscreen button is available, and
-//   2. tags the generated iframe with allowfullscreen + allow="fullscreen".
+// Two modes you can A/B on a real device:
 //
-// On iOS, true OS-level fullscreen is only reachable when YouTube itself calls
-// webkitEnterFullscreen() on its internal <video> — which only happens when the
-// user taps YouTube's own ⛶ button. Our page cannot trigger it from outside a
-// cross-origin iframe. The "Request fullscreen via JS" button below uses the
-// standard Fullscreen API on the iframe element, which works on desktop/Android
-// but is a no-op on iOS (no element fullscreen) — included so you can feel the
-// difference per browser.
+//   "api"     — YouTube IFrame API with native controls (controls:1, fs:1).
+//               Has YouTube's own ⛶ button, but ALSO its clickable links.
+//
+//   "sandbox" — plain <iframe> sandboxed WITHOUT allow-popups / top-navigation.
+//               The "Watch on YouTube" (target=_blank) + "Copy link" controls
+//               can no longer navigate, so they become dead clicks. The buttons
+//               are still visible (we cannot hide elements inside a cross-origin
+//               iframe), but they stop yanking you to youtube.com.
+//
+// Why overlays don't work: that chrome lives inside a cross-origin iframe (can't
+// position over just those elements), and in TRUE iOS fullscreen the native
+// video player owns the whole screen — your DOM isn't drawn on top of it.
+//
+// The only fully clean path is self-hosting (see BunnyVideoPlayer): a
+// same-origin <video> gives webkitEnterFullscreen() with zero YouTube chrome.
 
 const DEMO_VIDEO = {
   youtubeVideoId: "lz_lz2qDla0",
@@ -29,6 +34,8 @@ type FullscreenIframe = HTMLIFrameElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
 };
 
+type Mode = "sandbox" | "api";
+
 function detectIOS(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
@@ -39,16 +46,41 @@ function detectIOS(): boolean {
   return iOSDevice || iPadOS;
 }
 
-export default function AllowFullscreenDemoPage() {
+function requestIframeFullscreen(
+  iframe: FullscreenIframe | null,
+  setStatus: (s: string) => void
+) {
+  if (!iframe) {
+    setStatus("No iframe found yet.");
+    return;
+  }
+  if (typeof iframe.requestFullscreen === "function") {
+    iframe
+      .requestFullscreen()
+      .then(() => setStatus("requestFullscreen() resolved ✓"))
+      .catch((e) => setStatus(`requestFullscreen() rejected: ${e.name}`));
+  } else if (typeof iframe.webkitRequestFullscreen === "function") {
+    iframe.webkitRequestFullscreen();
+    setStatus("Called webkitRequestFullscreen() (no promise).");
+  } else {
+    setStatus(
+      "iframe.requestFullscreen is undefined — no element Fullscreen API (expected on iOS). Use YouTube's ⛶ button inside the player."
+    );
+  }
+}
+
+function ApiPlayer({
+  isIOS,
+  status,
+  setStatus,
+}: {
+  isIOS: boolean;
+  status: string;
+  setStatus: (s: string) => void;
+}) {
   const targetRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
-  const [isIOS, setIsIOS] = useState(false);
   const [iframeReady, setIframeReady] = useState(false);
-  const [status, setStatus] = useState<string>("");
-
-  useEffect(() => {
-    setIsIOS(detectIOS());
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +90,6 @@ export default function AllowFullscreenDemoPage() {
       playerRef.current = new window.YT.Player(targetRef.current, {
         videoId: DEMO_VIDEO.youtubeVideoId,
         playerVars: {
-          // Native controls ON so YouTube's own fullscreen button is present.
           controls: 1,
           fs: 1,
           playsinline: 1,
@@ -68,8 +99,6 @@ export default function AllowFullscreenDemoPage() {
         events: {
           onReady: () => {
             if (cancelled) return;
-            // The API replaces our target <div> with the iframe, so reach it
-            // via getIframe() rather than querying the (now-detached) div.
             const iframe = playerRef.current?.getIframe();
             if (iframe) {
               iframe.setAttribute("allowfullscreen", "");
@@ -107,73 +136,144 @@ export default function AllowFullscreenDemoPage() {
     };
   }, []);
 
-  function requestFullscreenViaJs() {
-    const iframe = playerRef.current?.getIframe() as FullscreenIframe | null;
-    if (!iframe) {
-      setStatus("No iframe found yet.");
-      return;
-    }
-    if (typeof iframe.requestFullscreen === "function") {
-      iframe
-        .requestFullscreen()
-        .then(() => setStatus("requestFullscreen() resolved ✓"))
-        .catch((e) => setStatus(`requestFullscreen() rejected: ${e.name}`));
-    } else if (typeof iframe.webkitRequestFullscreen === "function") {
-      iframe.webkitRequestFullscreen();
-      setStatus("Called webkitRequestFullscreen() (no promise).");
-    } else {
-      setStatus(
-        "iframe.requestFullscreen is undefined — this browser has no element Fullscreen API (expected on iOS). Use YouTube's ⛶ button instead."
-      );
-    }
+  return (
+    <div className="space-y-3">
+      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+        <div ref={targetRef} className="h-full w-full" />
+      </div>
+      <button
+        onClick={() =>
+          requestIframeFullscreen(
+            (playerRef.current?.getIframe() as FullscreenIframe) ?? null,
+            setStatus
+          )
+        }
+        disabled={!iframeReady}
+        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+      >
+        Request fullscreen via JS (iframe.requestFullscreen)
+      </button>
+      <p className="text-xs text-muted-foreground">
+        {isIOS
+          ? "iOS: use YouTube's ⛶ button. Note its links here are LIVE and will open youtube.com."
+          : "Desktop/Android: both the ⛶ button and the JS button give real fullscreen."}
+      </p>
+      {status && (
+        <p className="rounded-md bg-muted px-3 py-2 font-mono text-xs">
+          {status}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SandboxPlayer({
+  status,
+  setStatus,
+}: {
+  status: string;
+  setStatus: (s: string) => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  return (
+    <div className="space-y-3">
+      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+        <iframe
+          ref={iframeRef}
+          src={`https://www.youtube-nocookie.com/embed/${DEMO_VIDEO.youtubeVideoId}?rel=0&playsinline=1&enablejsapi=1`}
+          title={DEMO_VIDEO.title}
+          className="absolute inset-0 h-full w-full border-0"
+          // Deliberately NO allow-popups / allow-top-navigation: that disables
+          // the "Watch on YouTube" + "Copy link" navigation.
+          sandbox="allow-scripts allow-same-origin allow-presentation"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+        />
+      </div>
+      <button
+        onClick={() =>
+          requestIframeFullscreen(
+            (iframeRef.current as FullscreenIframe) ?? null,
+            setStatus
+          )
+        }
+        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+      >
+        Request fullscreen via JS (iframe.requestFullscreen)
+      </button>
+      <p className="text-xs text-muted-foreground">
+        Tap the YouTube links in the player — they should be DEAD (no new tab).
+        If the video shows an error instead of playing, the sandbox is too strict
+        for the embed on this browser.
+      </p>
+      {status && (
+        <p className="rounded-md bg-muted px-3 py-2 font-mono text-xs">
+          {status}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function AllowFullscreenDemoPage() {
+  const [isIOS, setIsIOS] = useState(false);
+  const [mode, setMode] = useState<Mode>("sandbox");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    setIsIOS(detectIOS());
+  }, []);
+
+  function switchMode(next: Mode) {
+    setStatus("");
+    setMode(next);
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4">
       <div>
-        <h1 className="text-2xl font-bold">Native fullscreen demo</h1>
+        <h1 className="text-2xl font-bold">Fullscreen-without-chrome test</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          YouTube native controls + <code>allowfullscreen</code> on the iframe.
-          On iOS, tap YouTube&apos;s own{" "}
-          <span className="font-semibold">⛶</span> button (bottom-right of the
-          video) for true OS fullscreen.
-        </p>
-      </div>
-
-      <div className="rounded-md border bg-muted/40 p-3 text-sm">
-        <p>
           Detected platform:{" "}
           <span className="font-semibold">
             {isIOS ? "iOS (iPhone/iPad)" : "non-iOS"}
           </span>
         </p>
-        <p className="mt-1 text-muted-foreground">
-          {isIOS
-            ? "Use YouTube's ⛶ control. The JS button below will report that element fullscreen is unavailable."
-            : "Both YouTube's ⛶ control and the JS button below should give real fullscreen."}
-        </p>
       </div>
 
-      {/* Plain iframe wrapper — NOT pointer-events-none, so YouTube's native
-          controls (including its fullscreen button) are tappable. */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
-        <div ref={targetRef} className="h-full w-full" />
-      </div>
-
-      <div className="space-y-3">
+      <div className="flex gap-2">
         <button
-          onClick={requestFullscreenViaJs}
-          disabled={!iframeReady}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          onClick={() => switchMode("sandbox")}
+          className={`rounded-md border px-3 py-1.5 text-sm ${
+            mode === "sandbox"
+              ? "bg-foreground text-background"
+              : "bg-background"
+          }`}
         >
-          Request fullscreen via JS (iframe.requestFullscreen)
+          Sandboxed iframe (kills links)
         </button>
-        {status && (
-          <p className="rounded-md bg-muted px-3 py-2 font-mono text-xs">
-            {status}
-          </p>
-        )}
+        <button
+          onClick={() => switchMode("api")}
+          className={`rounded-md border px-3 py-1.5 text-sm ${
+            mode === "api" ? "bg-foreground text-background" : "bg-background"
+          }`}
+        >
+          API + native controls (links live)
+        </button>
       </div>
+
+      {/* Remount per mode so the iframe/player is recreated cleanly. */}
+      {mode === "sandbox" ? (
+        <SandboxPlayer key="sandbox" status={status} setStatus={setStatus} />
+      ) : (
+        <ApiPlayer
+          key="api"
+          isIOS={isIOS}
+          status={status}
+          setStatus={setStatus}
+        />
+      )}
 
       <div className="border-t pt-4 text-sm">
         <p className="font-semibold">{DEMO_VIDEO.title}</p>
@@ -188,21 +288,23 @@ export default function AllowFullscreenDemoPage() {
       </div>
 
       <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-        <p className="font-semibold text-foreground">What to look for</p>
+        <p className="font-semibold text-foreground">Notes</p>
         <ul className="mt-1 list-disc space-y-1 pl-4">
           <li>
-            <span className="font-medium">Safari/Brave/Firefox iOS:</span>{" "}
-            YouTube&apos;s ⛶ button should give true fullscreen (chrome gone,
-            rotation). The JS button will say element fullscreen is unavailable.
+            Sandbox can neuter link navigation but cannot HIDE YouTube&apos;s
+            buttons (they live inside a cross-origin iframe).
           </li>
           <li>
-            <span className="font-medium">Desktop/Android:</span> both paths
-            give real fullscreen.
+            Overlay divs can&apos;t cover them either — cross-origin position is
+            unknown, and native iOS fullscreen draws over your whole page.
           </li>
           <li>
-            Trade-off vs. the real player: this shows YouTube&apos;s native
-            controls and branding, so the custom-controls / non-clickable design
-            is lost on this surface.
+            For a truly clean fullscreen button (no YouTube chrome at all),
+            self-host the video (Bunny) and use a same-origin &lt;video&gt;.
+          </li>
+          <li>
+            Disabling/obscuring embed chrome may conflict with YouTube&apos;s
+            embed Terms of Service — worth checking before shipping.
           </li>
         </ul>
       </div>
