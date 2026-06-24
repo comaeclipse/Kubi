@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 
 export interface MusicQueueItem {
   id: number;
@@ -59,6 +60,8 @@ export function MusicPlayer({
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(100);
   const [muted, setMuted] = useState(false);
+
+  const { toggle: toggleFullscreen } = useFullscreen(containerRef);
 
   useEffect(() => {
     onEndedRef.current = onEnded;
@@ -323,7 +326,7 @@ export function MusicPlayer({
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => containerRef.current?.requestFullscreen()}
+            onClick={toggleFullscreen}
             aria-label="Fullscreen"
           >
             <Maximize className="h-4 w-4" />

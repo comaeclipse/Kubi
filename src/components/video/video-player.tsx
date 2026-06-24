@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
+import { useFullscreen } from "@/hooks/use-fullscreen";
+
 declare global {
   interface Window {
     onYouTubeIframeAPIReady: () => void;
@@ -58,9 +60,10 @@ export function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isEnded, setIsEnded] = useState(false);
+
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(containerRef);
 
   useEffect(() => {
     profileIdRef.current = profileId;
@@ -287,26 +290,9 @@ export function VideoPlayer({
     [duration]
   );
 
-  const toggleFullscreen = useCallback(() => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  }, []);
-
   useEffect(() => {
     showControlsRef.current = showControls;
   }, [showControls]);
-
-  useEffect(() => {
-    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, []);
 
   const handleTouchStart = useCallback(() => {
     if (!showControlsRef.current) {

@@ -125,3 +125,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* CSS fallback fullscreen for iOS Safari, which has no Fullscreen API for
+   non-<video> elements. The player container fills the viewport instead.
+   `!important` overrides the container's aspect-video / rounded / sizing
+   utilities. See use-fullscreen.ts. */
+[data-css-fullscreen="true"] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  aspect-ratio: auto !important;
+  background: #000 !important;
+}
