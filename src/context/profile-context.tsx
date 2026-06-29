@@ -32,10 +32,17 @@ const STORAGE_KEY = "safevision_active_profile_id";
 const LAST_ACTIVE_KEY = "safevision_last_active";
 const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
 
-export function ProfileProvider({ children }: { children: ReactNode }) {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+export function ProfileProvider({
+  children,
+  initialProfiles,
+}: {
+  children: ReactNode;
+  // Resolved on the server and shipped in the initial HTML — no on-mount fetch.
+  initialProfiles: Profile[];
+}) {
+  const [profiles, setProfiles] = useState<Profile[]>(initialProfiles);
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const activeProfileIdRef = useRef<number | null>(null);
 
   const refreshProfiles = useCallback(async (): Promise<void> => {
@@ -48,35 +55,27 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Restore the last-active profile from localStorage against the
+  // server-provided profile list. localStorage isn't available during SSR, so
+  // this runs once after mount.
   useEffect(() => {
-    async function init() {
-      try {
-        const res = await fetch("/api/profiles");
-        const data = await res.json();
-        const fetched: Profile[] = Array.isArray(data) ? data : [];
-        setProfiles(fetched);
+    const storedId = localStorage.getItem(STORAGE_KEY);
+    const lastActiveRaw = localStorage.getItem(LAST_ACTIVE_KEY);
+    const elapsed = lastActiveRaw
+      ? Date.now() - parseInt(lastActiveRaw)
+      : Infinity;
 
-        const storedId = localStorage.getItem(STORAGE_KEY);
-        const lastActiveRaw = localStorage.getItem(LAST_ACTIVE_KEY);
-        const elapsed = lastActiveRaw
-          ? Date.now() - parseInt(lastActiveRaw)
-          : Infinity;
-
-        if (storedId && elapsed <= INACTIVITY_MS) {
-          const id = parseInt(storedId);
-          if (fetched.some((p) => p.id === id)) {
-            setActiveProfileId(id);
-            activeProfileIdRef.current = id;
-          } else {
-            localStorage.removeItem(STORAGE_KEY);
-          }
-        }
-      } catch {
-        // ignore
+    if (storedId && elapsed <= INACTIVITY_MS) {
+      const id = parseInt(storedId);
+      if (initialProfiles.some((p) => p.id === id)) {
+        setActiveProfileId(id);
+        activeProfileIdRef.current = id;
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
       }
-      setLoading(false);
     }
-    init();
+    // initialProfiles is the server snapshot; restoration only needs to run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Stamp the last-active time whenever the tab is hidden so inactivity is
