@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { NoZoom } from "@/components/no-zoom";
 import { PwaRegister } from "@/components/pwa-register";
+import { getInitialData } from "@/lib/initial-data";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -38,11 +39,13 @@ export const viewport = {
   themeColor: "#4f46e5",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { user, profiles } = await getInitialData();
+
   return (
     <html lang="en">
       <body
@@ -50,7 +53,9 @@ export default function RootLayout({
       >
         <NoZoom />
         <PwaRegister />
-        <AppShell>{children}</AppShell>
+        <AppShell initialUser={user} initialProfiles={profiles}>
+          {children}
+        </AppShell>
         <Toaster />
         <Analytics />
         <SpeedInsights />
