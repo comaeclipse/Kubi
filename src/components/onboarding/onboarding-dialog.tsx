@@ -223,9 +223,8 @@ export function OnboardingDialog() {
         <DialogHeader>
           <DialogTitle>Pick channels for your kids</DialogTitle>
           <DialogDescription>
-            These are the channels available in Kubi. Tap the ones you want your
-            kids to watch — they light up when selected. You can change this
-            anytime in Manage.
+            Select channels from the list below, or skip and add others manually
+            later in Manage.
           </DialogDescription>
         </DialogHeader>
 

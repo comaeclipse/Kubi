@@ -11,6 +11,13 @@ export async function DELETE() {
     const auth = await requireUser();
     if (auth instanceof NextResponse) return auth;
 
+    if (auth.isDemo) {
+      return NextResponse.json(
+        { error: "Demo accounts cannot be deleted" },
+        { status: 403 }
+      );
+    }
+
     await db.delete(users).where(eq(users.id, auth.id));
     await destroySession();
 

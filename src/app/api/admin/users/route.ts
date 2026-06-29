@@ -16,6 +16,7 @@ export async function GET() {
       email: users.email,
       emailVerified: users.emailVerified,
       isOperator: users.isOperator,
+      isDemo: users.isDemo,
       onboardedAt: users.onboardedAt,
       createdAt: users.createdAt,
       subscriptionStatus: users.subscriptionStatus,

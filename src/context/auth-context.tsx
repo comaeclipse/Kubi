@@ -3,7 +3,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useState,
   useCallback,
   type ReactNode,
@@ -15,7 +14,9 @@ export type AuthUser = {
   emailVerified: boolean;
   isOperator: boolean;
   onboarded: boolean;
+  isDemo: boolean;
   stripeCustomerId: string | null;
+  billingProvider: string | null;
   subscriptionId: string | null;
   subscriptionStatus: string | null;
   trialEndsAt: string | null; // ISO string from JSON
@@ -31,11 +32,20 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({
+  children,
+  initialUser,
+}: {
+  children: ReactNode;
+  // Resolved on the server and shipped in the initial HTML, so there is no
+  // post-hydration fetch on first load. `refresh` re-checks on demand.
+  initialUser: AuthUser | null;
+}) {
+  const [user, setUser] = useState<AuthUser | null>(initialUser);
+  const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/auth/status");
       const data = await res.json();
@@ -46,10 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   return (
     <AuthContext.Provider value={{ user, loading, refresh }}>

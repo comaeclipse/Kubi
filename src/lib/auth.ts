@@ -16,8 +16,12 @@ export type CurrentUser = {
   isOperator: boolean;
   // False until the parent finishes the first-run channel picker.
   onboarded: boolean;
+  // Operator-flagged demo accounts cannot delete themselves.
+  isDemo: boolean;
   // Subscription
   stripeCustomerId: string | null;
+  // 'stripe' | 'paypal' — which provider owns the subscription. Null until subscribed.
+  billingProvider: string | null;
   subscriptionId: string | null;
   subscriptionStatus: string | null;
   trialEndsAt: Date | null;
@@ -80,9 +84,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       email: users.email,
       emailVerified: users.emailVerified,
       isOperator: users.isOperator,
+      isDemo: users.isDemo,
       onboardedAt: users.onboardedAt,
       expiresAt: sessions.expiresAt,
       stripeCustomerId: users.stripeCustomerId,
+      billingProvider: users.billingProvider,
       subscriptionId: users.subscriptionId,
       subscriptionStatus: users.subscriptionStatus,
       trialEndsAt: users.trialEndsAt,
@@ -103,8 +109,10 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     email: decrypt(row.email),
     emailVerified: row.emailVerified,
     isOperator: row.isOperator,
+    isDemo: row.isDemo,
     onboarded: row.onboardedAt !== null,
     stripeCustomerId: row.stripeCustomerId,
+    billingProvider: row.billingProvider,
     subscriptionId: row.subscriptionId,
     subscriptionStatus: row.subscriptionStatus,
     trialEndsAt: row.trialEndsAt,

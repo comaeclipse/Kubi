@@ -95,7 +95,7 @@ function HomeContent() {
         rows.push(
           <div
             key={`spotlight-${spotlightIndex}`}
-            className="py-4"
+            className="rounded-lg bg-muted/40 px-4 py-4 my-2"
           >
             <div className="flex items-center gap-3 mb-3">
               <ChannelAvatar

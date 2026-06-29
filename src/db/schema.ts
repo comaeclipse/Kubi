@@ -43,6 +43,9 @@ export const users = pgTable("users", {
   invitedVia: integer("invited_via").references((): AnyPgColumn => invitations.id, {
     onDelete: "set null",
   }),
+  // Operator-flagged demo accounts: hides the delete-account option in the UI
+  // and blocks the DELETE /api/auth/account endpoint.
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 // Server-side sessions (revocable). The cookie stores the opaque `token`.

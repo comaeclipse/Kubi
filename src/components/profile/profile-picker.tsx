@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 import { ProfileAvatar } from "./profile-avatar";
@@ -14,14 +15,17 @@ import {
 export function ProfilePicker() {
   const { profiles, activeProfile, loading, switchProfile } = useProfile();
   const { user } = useAuth();
+  const pathname = usePathname();
 
   // Hold the picker back until onboarding is finished — the onboarding wizard
   // owns the screen (and creates the first profile) until then.
+  // Also suppress on admin routes so operators can access /admin without picking a profile.
   const open =
     !loading &&
     Boolean(user?.onboarded) &&
     !activeProfile &&
-    profiles.length > 0;
+    profiles.length > 0 &&
+    !pathname.startsWith("/admin");
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>

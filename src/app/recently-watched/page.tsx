@@ -9,6 +9,7 @@ import { useProfile } from "@/context/profile-context";
 interface Video {
   id: number;
   youtubeVideoId: string;
+  publicId?: string | null;
   title: string;
   thumbnailUrl: string;
   publishedAt: string;
