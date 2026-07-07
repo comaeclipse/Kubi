@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Users, Search, X, Settings, LogOut, UserCircle, CreditCard } from "lucide-react";
+import { Users, Search, X, Settings, LogOut, UserCircle, CreditCard, ExternalLink } from "lucide-react";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
@@ -67,7 +67,7 @@ function SearchBar() {
 
 export function Header() {
   const { activeProfile, profiles, switchProfile, clearProfile } = useProfile();
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -82,6 +82,21 @@ export function Header() {
       window.location.href = data.url;
     } catch {
       toast.error("Could not open billing portal");
+    }
+  }
+
+  async function handleCancelPayPal() {
+    if (!window.confirm("Cancel your PayPal subscription? You'll keep access until the end of the current period.")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/paypal/cancel", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Subscription cancelled");
+      await refresh();
+    } catch {
+      toast.error("Could not cancel subscription");
     }
   }
 
@@ -183,7 +198,25 @@ export function Header() {
               </Link>
             </DropdownMenuItem>
           )}
-          {user?.subscriptionId && (
+          {user?.subscriptionId && user.billingProvider === "paypal" && (
+            <>
+              <DropdownMenuItem onClick={handleCancelPayPal} className="gap-2">
+                <CreditCard className="h-4 w-4" />
+                Cancel subscription
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="gap-2">
+                <a
+                  href="https://www.paypal.com/myaccount/autopay/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Manage on PayPal.com
+                </a>
+              </DropdownMenuItem>
+            </>
+          )}
+          {user?.subscriptionId && user.billingProvider !== "paypal" && (
             <DropdownMenuItem onClick={handleManageBilling} className="gap-2">
               <CreditCard className="h-4 w-4" />
               Manage billing

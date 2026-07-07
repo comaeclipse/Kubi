@@ -3,7 +3,7 @@
 ## Context
 
 Kubi (package `safe-vision`, Vercel project `safervision`) just shipped a Stripe
-monthly subscription ($9.99/mo) with a 14-day free trial that gates the entire
+monthly subscription ($2.99/mo) with a 30-day free trial that gates the entire
 app. We want to offer **PayPal as a second payment option** on the same paywall,
 so a parent can subscribe with *either* Stripe or PayPal and get identical app
 access.
@@ -171,7 +171,7 @@ Return `{ ok: true }`.
 1. Create PayPal sandbox app (user) → obtain client id/secret.
 2. `src/lib/paypal.ts` REST client.
 3. One-time setup script (Node, like the in-session Stripe creation): create
-   catalog product → create billing plan ($9.99 USD/month, REGULAR cycle only) →
+   catalog product → create billing plan ($2.99 USD/month, REGULAR cycle only) →
    register webhook (`https://safervision.vercel.app/api/paypal/webhook`,
    subscribe to the `BILLING.SUBSCRIPTION.*` + `PAYMENT.SALE.COMPLETED` events).
    Capture `PAYPAL_PLAN_ID` and `PAYPAL_WEBHOOK_ID`.

@@ -19,6 +19,7 @@ const FEATURES = [
 export default function SubscribePage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [paypalLoading, setPaypalLoading] = useState(false);
 
   const trialExpired =
     user?.trialEndsAt && new Date(user.trialEndsAt) <= new Date();
@@ -36,6 +37,19 @@ export default function SubscribePage() {
     }
   }
 
+  async function handlePayPal() {
+    setPaypalLoading(true);
+    try {
+      const res = await fetch("/api/paypal/subscribe", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start PayPal checkout");
+      window.location.href = data.url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      setPaypalLoading(false);
+    }
+  }
+
   return (
     <div className="flex items-center justify-center min-h-screen p-4 bg-background">
       <div className="w-full max-w-md space-y-6">
@@ -47,7 +61,7 @@ export default function SubscribePage() {
             </p>
           ) : (
             <p className="mt-2 text-muted-foreground">
-              Start your 14-day free trial today.
+              Start your 30-day free trial today.
             </p>
           )}
         </div>
@@ -55,11 +69,11 @@ export default function SubscribePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-baseline gap-1">
-              <span className="text-4xl font-bold">$9.99</span>
+              <span className="text-4xl font-bold">$2.99</span>
               <span className="text-muted-foreground text-sm">/ month</span>
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              {trialExpired ? "Cancel any time." : "14 days free, then $9.99/month. Cancel any time."}
+              {trialExpired ? "Cancel any time." : "30 days free, then $2.99/month. Cancel any time."}
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -76,14 +90,36 @@ export default function SubscribePage() {
               className="w-full"
               size="lg"
               onClick={handleSubscribe}
-              disabled={loading}
+              disabled={loading || paypalLoading}
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : trialExpired ? (
-                "Subscribe — $9.99/month"
+                "Subscribe — $2.99/month"
               ) : (
                 "Start free trial"
+              )}
+            </Button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+
+            <Button
+              className="w-full bg-[#ffc439] text-[#003087] hover:bg-[#f0b72f]"
+              size="lg"
+              onClick={handlePayPal}
+              disabled={loading || paypalLoading}
+            >
+              {paypalLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Pay with PayPal"
               )}
             </Button>
           </CardContent>

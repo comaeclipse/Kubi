@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         ? await findUsableInvite(inviteCode)
         : null;
 
-    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const insertedRows = await db
       .insert(users)
       .values({

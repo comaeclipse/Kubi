@@ -12,6 +12,18 @@ export default function SubscribeSuccessPage() {
     let attempts = 0;
     const max = 15;
 
+    // PayPal redirects back with ?subscription_id=I-... — proactively write the
+    // status (covers sandbox webhook lag) before falling into the poll loop.
+    const subscriptionId = new URLSearchParams(window.location.search).get(
+      "subscription_id"
+    );
+    const confirmed = subscriptionId
+      ? fetch(
+          `/api/paypal/confirm?subscription_id=${encodeURIComponent(subscriptionId)}`,
+          { method: "POST" }
+        ).catch(() => {})
+      : Promise.resolve();
+
     async function poll() {
       attempts++;
       try {
@@ -33,7 +45,7 @@ export default function SubscribeSuccessPage() {
       }
     }
 
-    poll();
+    confirmed.then(poll);
   }, [router]);
 
   return (
