@@ -96,6 +96,7 @@ export async function POST(request: Request) {
       db
         .select({ count: sql<number>`count(*)` })
         .from(videos)
+        .innerJoin(channels, eq(videos.channelId, channels.id))
         .where(
           and(
             eq(videos.source, "youtube"),
