@@ -5,11 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
-import {
-  ProfileProvider,
-  useProfile,
-  type Profile,
-} from "@/context/profile-context";
+import { ProfileProvider, type Profile } from "@/context/profile-context";
 import { ProfilePicker } from "@/components/profile/profile-picker";
 import { AuthProvider, useAuth, type AuthUser } from "@/context/auth-context";
 import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
@@ -25,8 +21,11 @@ const BARE_PREFIXES = [
   "/invite",
 ];
 
+// Deliberately does not block on profile restoration: the profiles are
+// server-rendered, and gating the whole shell would replace every page's
+// server-rendered HTML with a spinner on hydration. Pages that fetch
+// profile-scoped data wait on `restoring` from useProfile() themselves.
 function AppContent({ children }: { children: ReactNode }) {
-  const { loading: profileLoading } = useProfile();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -35,14 +34,6 @@ function AppContent({ children }: { children: ReactNode }) {
       router.push("/subscribe");
     }
   }, [authLoading, user, router]);
-
-  if (profileLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
 
   return (
     <SidebarProvider>

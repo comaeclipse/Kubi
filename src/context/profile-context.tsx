@@ -20,7 +20,12 @@ export interface Profile {
 interface ProfileContextValue {
   profiles: Profile[];
   activeProfile: Profile | null;
-  loading: boolean;
+  /**
+   * True until the stored profile has been read back from localStorage. Until
+   * it flips, `activeProfile === null` means "not known yet", not "none
+   * selected" — consumers must not fetch profile-scoped data while it is true.
+   */
+  restoring: boolean;
   switchProfile: (id: number) => void;
   clearProfile: () => void;
   refreshProfiles: () => Promise<void>;
@@ -42,7 +47,7 @@ export function ProfileProvider({
 }) {
   const [profiles, setProfiles] = useState<Profile[]>(initialProfiles);
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const activeProfileIdRef = useRef<number | null>(null);
 
   const refreshProfiles = useCallback(async (): Promise<void> => {
@@ -74,6 +79,7 @@ export function ProfileProvider({
         localStorage.removeItem(STORAGE_KEY);
       }
     }
+    setRestoring(false);
     // initialProfiles is the server snapshot; restoration only needs to run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,7 +121,7 @@ export function ProfileProvider({
       value={{
         profiles,
         activeProfile,
-        loading,
+        restoring,
         switchProfile,
         clearProfile,
         refreshProfiles,

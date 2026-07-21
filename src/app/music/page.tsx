@@ -16,7 +16,7 @@ const REFILL_THRESHOLD = 5;
 const EXCLUSION_WINDOW = 200;
 
 export default function MusicPage() {
-  const { activeProfile } = useProfile();
+  const { activeProfile, restoring: profileRestoring } = useProfile();
   const [current, setCurrent] = useState<MusicQueueItem | null>(null);
   const [upcoming, setUpcoming] = useState<MusicQueueItem[]>([]);
   const [history, setHistory] = useState<MusicQueueItem[]>([]);
@@ -28,12 +28,17 @@ export default function MusicPage() {
   const seenIdsRef = useRef<number[]>([]);
 
   const requestQueue = useCallback(async (excludeVideoIds: number[]) => {
+    // The queue is profile-scoped; without one the API answers 403. Callers
+    // gate on this too, but refill/reshuffle can fire from stale closures.
+    if (!activeProfile) {
+      throw new Error("Select a profile to play music");
+    }
     const response = await fetch("/api/music/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         limit: BATCH_SIZE,
-        profileId: activeProfile?.id,
+        profileId: activeProfile.id,
         excludeVideoIds: excludeVideoIds.slice(-EXCLUSION_WINDOW),
       }),
     });
@@ -45,7 +50,7 @@ export default function MusicPage() {
       videos: MusicQueueItem[];
       eligibleCount: number;
     }>;
-  }, [activeProfile?.id]);
+  }, [activeProfile]);
 
   const loadInitialQueue = useCallback(async () => {
     setLoading(true);
@@ -66,9 +71,17 @@ export default function MusicPage() {
     }
   }, [requestQueue]);
 
+  // The provider restores the stored profile in its own effect, which React
+  // runs *after* this one on mount. Firing before that lands would request the
+  // queue with no profileId and take a 403 back.
   useEffect(() => {
+    if (profileRestoring) return;
+    if (!activeProfile) {
+      setLoading(false);
+      return;
+    }
     loadInitialQueue();
-  }, [loadInitialQueue]);
+  }, [activeProfile, loadInitialQueue, profileRestoring]);
 
   const refill = useCallback(async () => {
     if (refillingRef.current) return;
@@ -175,10 +188,19 @@ export default function MusicPage() {
     }
   }
 
-  if (loading && !current) {
+  if ((loading || profileRestoring) && !current) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">
         Loading music…
+      </div>
+    );
+  }
+
+  // The picker is open over this page until a profile is chosen.
+  if (!activeProfile) {
+    return (
+      <div className="py-16 text-center text-muted-foreground">
+        Select a profile to play music.
       </div>
     );
   }

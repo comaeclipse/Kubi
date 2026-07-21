@@ -13,15 +13,17 @@ import {
 } from "@/components/ui/dialog";
 
 export function ProfilePicker() {
-  const { profiles, activeProfile, loading, switchProfile } = useProfile();
+  const { profiles, activeProfile, restoring, switchProfile } = useProfile();
   const { user } = useAuth();
   const pathname = usePathname();
 
   // Hold the picker back until onboarding is finished — the onboarding wizard
-  // owns the screen (and creates the first profile) until then.
+  // owns the screen (and creates the first profile) until then. Also held back
+  // while the stored profile is still being restored, so a returning user never
+  // sees the picker flash open over a profile they already picked.
   // Also suppress on admin routes so operators can access /admin without picking a profile.
   const open =
-    !loading &&
+    !restoring &&
     Boolean(user?.onboarded) &&
     !activeProfile &&
     profiles.length > 0 &&

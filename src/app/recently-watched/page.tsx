@@ -23,7 +23,7 @@ interface Video {
 const PAGE_SIZE = 12;
 
 export default function RecentlyWatchedPage() {
-  const { activeProfile, loading: profileLoading } = useProfile();
+  const { activeProfile, restoring: profileRestoring } = useProfile();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -89,7 +89,7 @@ export default function RecentlyWatchedPage() {
     return () => observer.disconnect();
   }, [loadMore]);
 
-  if (profileLoading) {
+  if (profileRestoring) {
     return null;
   }
 
