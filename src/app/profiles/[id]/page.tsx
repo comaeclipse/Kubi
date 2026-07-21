@@ -15,6 +15,8 @@ interface LibraryChannel {
   id: number;
   title: string;
   thumbnailUrl: string | null;
+  /** Already in the parent's family library (user_channels). */
+  enabled: boolean;
 }
 
 export default function ManageProfilePage({
@@ -33,14 +35,31 @@ export default function ManageProfilePage({
 
   const load = useCallback(async () => {
     try {
-      // The family library only — the API refuses to grant a channel the
-      // parent hasn't enabled for the account.
+      // `all=1` is the whole master library plus this parent's own private
+      // channels, each annotated with `enabled`. Channels outside the family
+      // library are shown too — approving one adds it on the way through.
       const [channelData, approvedIds] = await Promise.all([
-        fetch("/api/channels").then((r) => r.json()),
+        fetch("/api/channels?all=1").then((r) => r.json()),
         fetch(`/api/profiles/${profileId}/channels`).then((r) => r.json()),
       ]);
-      setChannels(Array.isArray(channelData) ? channelData : []);
-      setApproved(new Set(Array.isArray(approvedIds) ? approvedIds : []));
+      const approvedSet = new Set<number>(
+        Array.isArray(approvedIds) ? approvedIds : []
+      );
+      const list: LibraryChannel[] = Array.isArray(channelData)
+        ? channelData
+        : [];
+      // Approved first, then everything else — alphabetical within each group.
+      // Sorted once here rather than on every render, so approving a channel
+      // doesn't make the grid reshuffle under the parent's finger mid-tap.
+      setChannels(
+        [...list].sort((a, b) => {
+          const aOn = approvedSet.has(a.id) ? 0 : 1;
+          const bOn = approvedSet.has(b.id) ? 0 : 1;
+          if (aOn !== bOn) return aOn - bOn;
+          return a.title.localeCompare(b.title);
+        })
+      );
+      setApproved(approvedSet);
     } catch {
       toast.error("Couldn't load channels");
     } finally {
@@ -68,6 +87,18 @@ export default function ManageProfilePage({
     setApproved(next);
 
     try {
+      // Granting a channel the account hasn't enabled would be rejected by the
+      // PATCH below, so adopt it into the family library first.
+      if (allow && !channel.enabled) {
+        const adopt = await fetch(`/api/channels/${channel.id}/toggle`, {
+          method: "POST",
+        });
+        if (!adopt.ok) throw new Error("Failed");
+        setChannels((current) =>
+          current.map((c) => (c.id === channel.id ? { ...c, enabled: true } : c))
+        );
+      }
+
       const res = await fetch(`/api/profiles/${profileId}/channels`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -79,6 +110,9 @@ export default function ManageProfilePage({
       toast.error(`Couldn't update access to ${channel.title}`);
     }
   }
+
+  // Revoking here only unapproves for this child; the channel stays in the
+  // family library because siblings may still be watching it.
 
   if (profiles.length > 0 && !profile) {
     return (
@@ -126,8 +160,8 @@ export default function ManageProfilePage({
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">Approved channels</h2>
         <p className="text-sm text-muted-foreground">
-          Tap a channel to approve it. Greyed-out channels are hidden from{" "}
-          {profile?.name ?? "this profile"}.
+          Approved channels come first. Tap any greyed-out channel below them to
+          add it to {profile?.name ?? "this profile"}.
         </p>
       </div>
 
@@ -155,7 +189,7 @@ export default function ManageProfilePage({
         <p className="py-8 text-sm text-muted-foreground">Loading channels…</p>
       ) : channels.length === 0 ? (
         <p className="py-8 text-sm text-muted-foreground">
-          Your family library is empty, so there&apos;s nothing to approve yet.
+          No channels are available yet. Check back soon.
         </p>
       ) : visible.length === 0 ? (
         <p className="py-8 text-sm text-muted-foreground">
