@@ -36,7 +36,7 @@ const SCROLL_THRESHOLD = 400;
 
 export default function ChannelPage() {
   const params = useParams<{ channelId: string }>();
-  const { activeProfile } = useProfile();
+  const { activeProfile, restoring: profileRestoring } = useProfile();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
   const [totalVideos, setTotalVideos] = useState(0);
@@ -47,6 +47,9 @@ export default function ChannelPage() {
   const [syncing, setSyncing] = useState(false);
   const offsetRef = useRef(0);
   const loadingRef = useRef(false);
+  // Bumped by every fetch so a response that has been superseded (channel
+  // switched, profile restored) can't write its rows over the newer load.
+  const requestIdRef = useRef(0);
   // Mirror of `hasMore` readable synchronously inside the scroll handler so we
   // stop paging once the last page has loaded (otherwise scroll events + the
   // skeleton layout shift re-fire fetches in an infinite loop).
@@ -54,8 +57,11 @@ export default function ChannelPage() {
 
   const fetchVideos = useCallback(
     async (newOffset: number, append: boolean) => {
-      if (loadingRef.current) return;
-      if (append && !hasMoreRef.current) return;
+      // Only paging is skipped while a request is open. A fresh load has to go
+      // through, or a first page that arrives mid-flight is dropped and the
+      // grid is stranded empty with nothing left to retrigger it.
+      if (append && (loadingRef.current || !hasMoreRef.current)) return;
+      const requestId = ++requestIdRef.current;
       loadingRef.current = true;
       if (append) setLoadingMore(true);
 
@@ -65,6 +71,7 @@ export default function ChannelPage() {
           `/api/videos?channelId=${params.channelId}&limit=${PAGE_SIZE}&offset=${newOffset}${pParam}`
         );
         const data = await res.json();
+        if (requestId !== requestIdRef.current) return;
         const newVideos = data.videos || [];
 
         setVideos((prev) => (append ? [...prev, ...newVideos] : newVideos));
@@ -75,14 +82,21 @@ export default function ChannelPage() {
       } catch {
         // ignore
       } finally {
-        setLoadingMore(false);
-        loadingRef.current = false;
+        if (requestId === requestIdRef.current) {
+          setLoadingMore(false);
+          loadingRef.current = false;
+        }
       }
     },
     [params.channelId, activeProfile]
   );
 
   useEffect(() => {
+    // Until the stored profile has been read back from localStorage there is
+    // no profileId to send, and /api/videos rejects a profile-less request
+    // outright — so a hard load of this page would 403 and render empty.
+    if (profileRestoring) return;
+
     setLoading(true);
     setVideos([]);
     offsetRef.current = 0;
@@ -103,7 +117,7 @@ export default function ChannelPage() {
       .catch(() => {});
 
     fetchVideos(0, false).finally(() => setLoading(false));
-  }, [params.channelId, fetchVideos]);
+  }, [params.channelId, fetchVideos, profileRestoring]);
 
   // Scroll-based infinite loading
   useEffect(() => {

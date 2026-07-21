@@ -90,6 +90,11 @@ function SortableChannelItem({
           href={`/channel/${channel.youtubeChannelId}`}
           title={channel.title}
           className="flex flex-col items-center justify-center gap-1"
+          // An <a href> is natively draggable, so pressing and dragging one
+          // starts the browser's own link drag alongside dnd-kit's pointer
+          // drag. Dropping that link on the page navigates to it with a full
+          // document load, which blows away the reorder mid-flight.
+          draggable={false}
           {...(reorderable ? { ...attributes, ...listeners } : {})}
           onClick={(e) => {
             if (justDraggedRef.current === channel.id) {
@@ -158,26 +163,31 @@ export function AppSidebar() {
       const { active, over, delta } = event;
       if (delta.x !== 0 || delta.y !== 0) {
         justDraggedRef.current = active.id as number;
+        // The click that follows pointerup is the one to swallow. Anything
+        // later is a real click, so drop the guard once that click has had
+        // its turn — otherwise a drag that ends without a click leaves the
+        // channel permanently unclickable.
+        setTimeout(() => {
+          justDraggedRef.current = null;
+        }, 0);
       }
       if (!over || active.id === over.id || !activeProfile) return;
 
-      setChannels((current) => {
-        const oldIndex = current.findIndex((c) => c.id === active.id);
-        const newIndex = current.findIndex((c) => c.id === over.id);
-        if (oldIndex === -1 || newIndex === -1) return current;
+      const oldIndex = channels.findIndex((c) => c.id === active.id);
+      const newIndex = channels.findIndex((c) => c.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
 
-        const reordered = arrayMove(current, oldIndex, newIndex);
-        fetch(`/api/profiles/${activeProfile.id}/channels/reorder`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channelIds: reordered.map((c) => c.id) }),
-        }).catch(() => {
-          setChannels(current);
-        });
-        return reordered;
+      const reordered = arrayMove(channels, oldIndex, newIndex);
+      setChannels(reordered);
+      fetch(`/api/profiles/${activeProfile.id}/channels/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelIds: reordered.map((c) => c.id) }),
+      }).catch(() => {
+        setChannels(channels);
       });
     },
-    [activeProfile]
+    [activeProfile, channels]
   );
 
   return (
