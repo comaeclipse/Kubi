@@ -1,4 +1,4 @@
-CREATE TABLE "profile_channels" (
+CREATE TABLE IF NOT EXISTS "profile_channels" (
   "profile_id" integer NOT NULL REFERENCES "profiles"("id") ON DELETE cascade,
   "channel_id" integer NOT NULL REFERENCES "channels"("id") ON DELETE cascade,
   "created_at" timestamp with time zone NOT NULL DEFAULT now(),
