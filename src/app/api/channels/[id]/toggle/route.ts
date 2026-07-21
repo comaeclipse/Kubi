@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { channels, profileChannels, userChannels } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { channels, profileChannels, profiles, userChannels } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { visibleChannel } from "@/lib/channel-visibility";
 
@@ -68,9 +68,17 @@ export async function DELETE(
 
     // Removing a channel from the family library revokes it for every child;
     // otherwise re-enabling it later could unexpectedly restore access.
-    await db
-      .delete(profileChannels)
-      .where(eq(profileChannels.channelId, channelId));
+    // Scoped to this account's own profiles — an unscoped delete here would
+    // revoke the channel for every household on the platform.
+    await db.delete(profileChannels).where(
+      and(
+        eq(profileChannels.channelId, channelId),
+        inArray(
+          profileChannels.profileId,
+          db.select({ id: profiles.id }).from(profiles).where(eq(profiles.userId, auth.id))
+        )
+      )
+    );
 
     return NextResponse.json({ enabled: false });
   } catch {
