@@ -4,6 +4,10 @@ import { profiles } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
+import {
+  isValidDailyLimit,
+  normalizeBlockedKeywords,
+} from "@/lib/validation";
 
 export async function PATCH(
   request: Request,
@@ -14,9 +18,10 @@ export async function PATCH(
     if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
-    const { name, avatarColor } = await request.json();
+    const body = await request.json();
+    const { name, avatarColor, blockedKeywords, dailyLimitMinutes } = body;
 
-    const updates: Record<string, string> = {};
+    const updates: Partial<typeof profiles.$inferInsert> = {};
     let plainName: string | undefined;
     if (name && typeof name === "string" && name.trim().length > 0) {
       plainName = name.trim();
@@ -24,6 +29,27 @@ export async function PATCH(
     }
     if (avatarColor && typeof avatarColor === "string") {
       updates.avatarColor = avatarColor;
+    }
+    if (blockedKeywords !== undefined) {
+      const normalized = normalizeBlockedKeywords(blockedKeywords);
+      if (!normalized) {
+        return NextResponse.json(
+          { error: "blockedKeywords must be an array of words" },
+          { status: 400 }
+        );
+      }
+      updates.blockedKeywords = normalized;
+    }
+    // Explicit null clears the limit, so presence — not truthiness — decides
+    // whether this field is being changed.
+    if (dailyLimitMinutes !== undefined) {
+      if (!isValidDailyLimit(dailyLimitMinutes)) {
+        return NextResponse.json(
+          { error: "dailyLimitMinutes must be null or 5–1440" },
+          { status: 400 }
+        );
+      }
+      updates.dailyLimitMinutes = dailyLimitMinutes;
     }
 
     if (Object.keys(updates).length === 0) {

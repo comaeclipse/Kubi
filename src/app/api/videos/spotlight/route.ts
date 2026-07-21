@@ -4,7 +4,7 @@ import { videos, channels, videoProgress } from "@/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { visibleChannel } from "@/lib/channel-visibility";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 export async function GET(request: Request) {
   try {
@@ -14,13 +14,14 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const profileIdParam = url.searchParams.get("profileId");
     const profileId = profileIdParam ? parseInt(profileIdParam) : NaN;
-    const enabledIds = await getProfileChannelIds(auth.id, profileId);
-    if (enabledIds === null) {
+    const rules = await getProfileContentRules(auth.id, profileId);
+    if (rules === null) {
       return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
     }
-    if (enabledIds.length === 0) {
+    if (rules.channelIds.length === 0) {
       return NextResponse.json([]);
     }
+    const enabledIds = rules.channelIds;
 
     const channelList = await db
       .select({
@@ -33,7 +34,11 @@ export async function GET(request: Request) {
       .from(channels)
       .leftJoin(
         videos,
-        and(eq(videos.channelId, channels.id), eq(videos.hidden, false))
+        and(
+          eq(videos.channelId, channels.id),
+          eq(videos.hidden, false),
+          rules.titleFilter
+        )
       )
       .where(and(inArray(channels.id, enabledIds), visibleChannel(auth.id)))
       .groupBy(channels.id)
@@ -68,7 +73,8 @@ export async function GET(request: Request) {
             .where(
               and(
                 eq(videos.channelId, channel.id),
-                eq(videos.hidden, false)
+                eq(videos.hidden, false),
+                rules.titleFilter
               )
             )
             .orderBy(desc(videos.publishedAt))

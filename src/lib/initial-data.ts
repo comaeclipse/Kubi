@@ -53,6 +53,8 @@ export async function getInitialData(): Promise<InitialData> {
       id: p.id,
       name: decryptLegacyCompatible(p.name),
       avatarColor: p.avatarColor,
+      blockedKeywords: p.blockedKeywords ?? [],
+      dailyLimitMinutes: p.dailyLimitMinutes,
       createdAt: p.createdAt.toISOString(),
     }));
 

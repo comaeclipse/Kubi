@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { visibleChannel } from "@/lib/channel-visibility";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 const MAX_LIMIT = 20;
 const MAX_EXCLUSIONS = 200;
@@ -22,13 +22,14 @@ export async function POST(request: Request) {
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json().catch(() => ({}));
-    const allowedChannelIds = await getProfileChannelIds(auth.id, Number(body.profileId));
-    if (allowedChannelIds === null) {
+    const rules = await getProfileContentRules(auth.id, Number(body.profileId));
+    if (rules === null) {
       return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
     }
-    if (allowedChannelIds.length === 0) {
+    if (rules.channelIds.length === 0) {
       return NextResponse.json({ videos: [], eligibleCount: 0 });
     }
+    const allowedChannelIds = rules.channelIds;
 
     const requestedLimit = Number(body.limit);
     const limit = Math.min(
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
       eq(videos.isShort, false),
       inArray(videos.channelId, allowedChannelIds),
       visibleChannel(auth.id),
+      rules.titleFilter,
       or(
         inArray(videos.channelId, musicChannelIds),
         inArray(videos.id, musicVideoIds)
@@ -104,6 +106,7 @@ export async function POST(request: Request) {
             eq(videos.isShort, false),
             inArray(videos.channelId, allowedChannelIds),
             visibleChannel(auth.id),
+            rules.titleFilter,
             or(
               inArray(videos.channelId, musicChannelIds),
               inArray(videos.id, musicVideoIds)

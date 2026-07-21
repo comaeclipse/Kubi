@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { PROFILE_COLORS } from "@/lib/profile-colors";
+import { formatMinutes } from "@/lib/time-limit";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, History } from "lucide-react";
 
@@ -20,6 +21,22 @@ interface Profile {
   id: number;
   name: string;
   avatarColor: string;
+  blockedKeywords: string[];
+  dailyLimitMinutes: number | null;
+}
+
+// One line summarising the parental controls in force, so a parent can see at
+// a glance which kids are limited without opening each profile.
+function controlsSummary(profile: Profile): string | null {
+  const parts: string[] = [];
+  if (profile.dailyLimitMinutes !== null) {
+    parts.push(`${formatMinutes(profile.dailyLimitMinutes)} a day`);
+  }
+  const blocked = profile.blockedKeywords.length;
+  if (blocked > 0) {
+    parts.push(`${blocked} blocked word${blocked === 1 ? "" : "s"}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 interface ProfileManagerProps {
@@ -200,7 +217,16 @@ export function ProfileManager({ profiles, onRefresh }: ProfileManagerProps) {
                   avatarColor={profile.avatarColor}
                   size="md"
                 />
-                <span className="font-medium">{profile.name}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">
+                    {profile.name}
+                  </span>
+                  {controlsSummary(profile) && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {controlsSummary(profile)}
+                    </span>
+                  )}
+                </span>
               </Link>
               <Button
                 variant="ghost"

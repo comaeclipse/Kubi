@@ -7,7 +7,7 @@ import { videoIdBlindIndex } from "@/lib/crypto";
 import { extractKeywords } from "@/lib/related-videos";
 import { buildEmbedUrl, resolveLibraryId } from "@/lib/bunny";
 import { visibleChannel } from "@/lib/channel-visibility";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 // Point Bunny videos at the signed-thumbnail redirect endpoint.
 function mapThumb<
@@ -31,12 +31,18 @@ export async function GET(
     const url = new URL(request.url);
     const profileId = url.searchParams.get("profileId");
 
-    const enabledIds = await getProfileChannelIds(auth.id, Number(profileId));
-    if (enabledIds === null) {
+    const rules = await getProfileContentRules(auth.id, Number(profileId));
+    if (rules === null) {
       return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
     }
+    // Blocked titles fold into the same gate as channel access, so a blocked
+    // video is simply "not found" for this profile — on the watch page itself
+    // as well as in the two related-video rails below.
     const enabledFilter = (col: typeof videos.channelId) =>
-      enabledIds.length > 0 ? inArray(col, enabledIds) : sql`false`;
+      and(
+        rules.channelIds.length > 0 ? inArray(col, rules.channelIds) : sql`false`,
+        rules.titleFilter
+      );
 
     const progressJoinCondition = profileId
       ? and(

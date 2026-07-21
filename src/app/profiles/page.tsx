@@ -39,8 +39,8 @@ export default function ProfilesPage() {
       <div>
         <h1 className="text-2xl font-bold">Manage Profiles</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Add or remove kids on your account. Tap a profile to choose which
-          channels they can watch.
+          Add or remove kids on your account. Tap a profile to set their time
+          limit, block words, and choose which channels they can watch.
         </p>
       </div>
 

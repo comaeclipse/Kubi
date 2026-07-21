@@ -6,22 +6,23 @@ import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 import { videoIdBlindIndex } from "@/lib/crypto";
 import { resolveYoutubeVideoId } from "@/lib/public-id";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 async function profileCanWatchVideo(
   userId: number,
   profileId: number,
   youtubeVideoId: string
 ) {
-  const allowedChannelIds = await getProfileChannelIds(userId, profileId);
-  if (!allowedChannelIds?.length) return false;
+  const rules = await getProfileContentRules(userId, profileId);
+  if (!rules?.channelIds.length) return false;
   const [video] = await db
     .select({ id: videos.id })
     .from(videos)
     .where(
       and(
         eq(videos.youtubeVideoId, youtubeVideoId),
-        inArray(videos.channelId, allowedChannelIds)
+        inArray(videos.channelId, rules.channelIds),
+        rules.titleFilter
       )
     )
     .limit(1);

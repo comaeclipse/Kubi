@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
+import { ProfileControls } from "@/components/profile/profile-controls";
 import { Input } from "@/components/ui/input";
 import { useProfile } from "@/context/profile-context";
 import { cn } from "@/lib/utils";
@@ -156,6 +157,8 @@ export default function ManageProfilePage({
           </p>
         </div>
       </div>
+
+      {profile && <ProfileControls profile={profile} />}
 
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">Approved channels</h2>

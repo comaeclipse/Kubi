@@ -4,7 +4,7 @@ import { videoProgress, videos, channels } from "@/db/schema";
 import { eq, and, gt, desc, count, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 const PAGE_SIZE = 12;
 
@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
   if (!(await userOwnsProfile(auth.id, parseInt(profileId)))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const allowedChannelIds = await getProfileChannelIds(auth.id, parseInt(profileId));
-  if (!allowedChannelIds?.length) {
+  const rules = await getProfileContentRules(auth.id, parseInt(profileId));
+  if (!rules?.channelIds.length) {
     return NextResponse.json({ videos: [], total: 0, hasMore: false });
   }
 
@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
     gt(videoProgress.progressSeconds, 0),
     eq(videos.hidden, false),
     eq(videos.isShort, false),
-    inArray(videos.channelId, allowedChannelIds)
+    inArray(videos.channelId, rules.channelIds),
+    rules.titleFilter
   );
 
   const [rows, totalResult] = await Promise.all([

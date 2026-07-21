@@ -4,7 +4,7 @@ import { videoProgress, videos, channels } from "@/db/schema";
 import { eq, and, gt, desc, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 export async function GET(req: NextRequest) {
   const auth = await requireUser();
@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
   if (!profileId || !(await userOwnsProfile(auth.id, parseInt(profileId)))) {
     return NextResponse.json(null);
   }
-  const allowedChannelIds = await getProfileChannelIds(auth.id, parseInt(profileId));
-  if (!allowedChannelIds?.length) return NextResponse.json(null);
+  const rules = await getProfileContentRules(auth.id, parseInt(profileId));
+  if (!rules?.channelIds.length) return NextResponse.json(null);
 
   const rows = await db
     .select({
@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
         eq(videoProgress.profileId, parseInt(profileId)),
         gt(videoProgress.progressSeconds, 0),
         eq(videos.hidden, false),
-        inArray(videos.channelId, allowedChannelIds)
+        inArray(videos.channelId, rules.channelIds),
+        rules.titleFilter
       )
     )
     .orderBy(desc(videoProgress.updatedAt))

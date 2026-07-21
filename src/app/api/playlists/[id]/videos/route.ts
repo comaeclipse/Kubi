@@ -4,7 +4,7 @@ import { playlistVideos, videos } from "@/db/schema";
 import { eq, and, inArray, max } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsPlaylist } from "@/lib/ownership";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 export async function POST(
   request: Request,
@@ -29,14 +29,20 @@ export async function POST(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const allowedChannelIds = await getProfileChannelIds(auth.id, Number(profileId));
-    if (!allowedChannelIds?.length) {
+    const rules = await getProfileContentRules(auth.id, Number(profileId));
+    if (!rules?.channelIds.length) {
       return NextResponse.json({ error: "A valid profile with channel access is required" }, { status: 403 });
     }
     const [video] = await db
       .select({ id: videos.id })
       .from(videos)
-      .where(and(eq(videos.id, videoId), inArray(videos.channelId, allowedChannelIds)))
+      .where(
+        and(
+          eq(videos.id, videoId),
+          inArray(videos.channelId, rules.channelIds),
+          rules.titleFilter
+        )
+      )
       .limit(1);
     if (!video) {
       return NextResponse.json({ error: "Video is not available to this profile" }, { status: 403 });

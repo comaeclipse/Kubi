@@ -14,6 +14,10 @@ export interface Profile {
   id: number;
   name: string;
   avatarColor: string;
+  /** Lowercased words filtered out of this child's video titles. */
+  blockedKeywords: string[];
+  /** Minutes of in-app time allowed per day; null = no limit. */
+  dailyLimitMinutes: number | null;
   createdAt: string;
 }
 

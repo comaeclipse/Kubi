@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Header } from "@/components/layout/header";
 import { ProfileProvider, type Profile } from "@/context/profile-context";
 import { ProfilePicker } from "@/components/profile/profile-picker";
+import { TimeLimitGuard } from "@/components/profile/time-limit-guard";
 import { AuthProvider, useAuth, type AuthUser } from "@/context/auth-context";
 import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
 
@@ -44,6 +45,7 @@ function AppContent({ children }: { children: ReactNode }) {
       </div>
       <OnboardingDialog />
       <ProfilePicker />
+      <TimeLimitGuard />
     </SidebarProvider>
   );
 }

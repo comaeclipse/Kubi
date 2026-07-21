@@ -235,8 +235,40 @@ export const profiles = pgTable("profiles", {
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   avatarColor: text("avatar_color").notNull(),
+  // Lowercased words the parent has blocked for this child; any video whose
+  // title contains one is filtered out of every profile-scoped query. Stored in
+  // plaintext (unlike `name`) — it is parental configuration, not personal data
+  // about the child, and every content route depends on reading it.
+  blockedKeywords: text("blocked_keywords")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
+  // Minutes of in-app time allowed per local day. Null = no limit.
+  dailyLimitMinutes: integer("daily_limit_minutes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// In-app time banked per profile per local calendar day, for `dailyLimitMinutes`.
+// Rows are written by the client's heartbeat but the seconds are computed from
+// server time, so the tally can't be inflated or reset from the browser.
+export const profileUsage = pgTable(
+  "profile_usage",
+  {
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    // The child's local calendar day as YYYY-MM-DD, resolved server-side from
+    // the timezone the client reports.
+    usageDate: text("usage_date").notNull(),
+    secondsUsed: integer("seconds_used").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.profileId, table.usageDate] }),
+  })
+);
 
 export const playlists = pgTable("playlists", {
   id: serial("id").primaryKey(),

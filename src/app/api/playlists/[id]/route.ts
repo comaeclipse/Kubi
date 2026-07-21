@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { playlists, playlistVideos, videos, channels, videoProgress } from "@/db/schema";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 export async function GET(
   request: NextRequest,
@@ -16,10 +16,10 @@ export async function GET(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const profileId = searchParams.get("profileId");
-    const allowedChannelIds = profileId
-      ? await getProfileChannelIds(auth.id, Number(profileId))
+    const rules = profileId
+      ? await getProfileContentRules(auth.id, Number(profileId))
       : null;
-    if (!profileId || allowedChannelIds === null) {
+    if (!profileId || rules === null) {
       return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
     }
 
@@ -68,7 +68,10 @@ export async function GET(
       .where(
         and(
           eq(playlistVideos.playlistId, parseInt(id)),
-          allowedChannelIds.length > 0 ? inArray(videos.channelId, allowedChannelIds) : sql`false`
+          rules.channelIds.length > 0
+            ? inArray(videos.channelId, rules.channelIds)
+            : sql`false`,
+          rules.titleFilter
         )
       )
       .orderBy(asc(playlistVideos.position));

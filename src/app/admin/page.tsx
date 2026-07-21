@@ -6,15 +6,13 @@ import { ProfileManager } from "@/components/admin/profile-manager";
 import { ChannelToggleList } from "@/components/admin/channel-toggle-list";
 import { MyChannelManager } from "@/components/channel/my-channel-manager";
 import { Separator } from "@/components/ui/separator";
-import { useProfile } from "@/context/profile-context";
+import { useProfile, type Profile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 
 export default function AdminFamilyPage() {
   const { refreshProfiles: refreshContextProfiles } = useProfile();
   const { user } = useAuth();
-  const [adminProfiles, setAdminProfiles] = useState<
-    { id: number; name: string; avatarColor: string }[]
-  >([]);
+  const [adminProfiles, setAdminProfiles] = useState<Profile[]>([]);
 
   const loadProfiles = useCallback(async () => {
     try {

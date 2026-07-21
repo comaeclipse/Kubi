@@ -5,7 +5,7 @@ import { eq, desc, and, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getVideoLabelMap } from "@/lib/taxonomy";
 import { visibleChannel } from "@/lib/channel-visibility";
-import { getProfileChannelIds } from "@/lib/profile-content";
+import { getProfileContentRules } from "@/lib/profile-content";
 
 // Bunny videos store no thumbnail in the DB — point them at the server-side
 // redirect endpoint that signs a fresh Bunny CDN thumbnail URL per request.
@@ -40,17 +40,18 @@ export async function GET(request: Request) {
 
     if (!all) {
       const parsedProfileId = Number(profileId);
-      const enabledIds = await getProfileChannelIds(auth.id, parsedProfileId);
-      if (enabledIds === null) {
+      const rules = await getProfileContentRules(auth.id, parsedProfileId);
+      if (rules === null) {
         return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
       }
       // A valid but unconfigured profile has an intentionally empty library.
-      if (enabledIds.length === 0) {
+      if (rules.channelIds.length === 0) {
         return NextResponse.json(limit > 0 ? { videos: [], total: 0, hasMore: false } : []);
       }
-      conditions.push(inArray(videos.channelId, enabledIds));
+      conditions.push(inArray(videos.channelId, rules.channelIds));
       // Defense-in-depth: never surface another user's private channel.
       conditions.push(visibleChannel(auth.id));
+      if (rules.titleFilter) conditions.push(rules.titleFilter);
     } else {
       // Operator master-library browse — exclude all private channels.
       conditions.push(isNull(channels.ownerUserId));
