@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { videos, channels, videoProgress, userChannels } from "@/db/schema";
+import { videos, channels, videoProgress } from "@/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
-import { userOwnsProfile } from "@/lib/ownership";
 import { visibleChannel } from "@/lib/channel-visibility";
+import { getProfileChannelIds } from "@/lib/profile-content";
 
 export async function GET(request: Request) {
   try {
@@ -13,19 +13,11 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const profileIdParam = url.searchParams.get("profileId");
-    // Only honor a profileId the caller actually owns (it drives progress).
-    const profileId =
-      profileIdParam &&
-      (await userOwnsProfile(auth.id, parseInt(profileIdParam)))
-        ? profileIdParam
-        : null;
-
-    // Restrict the home spotlight to channels this account has enabled.
-    const enabledRows = await db
-      .select({ channelId: userChannels.channelId })
-      .from(userChannels)
-      .where(eq(userChannels.userId, auth.id));
-    const enabledIds = enabledRows.map((r) => r.channelId);
+    const profileId = profileIdParam ? parseInt(profileIdParam) : NaN;
+    const enabledIds = await getProfileChannelIds(auth.id, profileId);
+    if (enabledIds === null) {
+      return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
+    }
     if (enabledIds.length === 0) {
       return NextResponse.json([]);
     }
@@ -50,7 +42,7 @@ export async function GET(request: Request) {
     const progressJoinCondition = profileId
       ? and(
           eq(videos.youtubeVideoIdHash, videoProgress.videoIdHash),
-          eq(videoProgress.profileId, parseInt(profileId))
+          eq(videoProgress.profileId, profileId)
         )
       : sql`false`;
 

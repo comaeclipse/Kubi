@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { videos, channels, videoProgress, userChannels } from "@/db/schema";
+import { videos, channels, videoProgress } from "@/db/schema";
 import { eq, desc, and, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getVideoLabelMap } from "@/lib/taxonomy";
 import { visibleChannel } from "@/lib/channel-visibility";
+import { getProfileChannelIds } from "@/lib/profile-content";
 
 // Bunny videos store no thumbnail in the DB — point them at the server-side
 // redirect endpoint that signs a fresh Bunny CDN thumbnail URL per request.
@@ -38,12 +39,12 @@ export async function GET(request: Request) {
     const conditions = [];
 
     if (!all) {
-      const enabledRows = await db
-        .select({ channelId: userChannels.channelId })
-        .from(userChannels)
-        .where(eq(userChannels.userId, auth.id));
-      const enabledIds = enabledRows.map((r) => r.channelId);
-      // No enabled channels => nothing to show.
+      const parsedProfileId = Number(profileId);
+      const enabledIds = await getProfileChannelIds(auth.id, parsedProfileId);
+      if (enabledIds === null) {
+        return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
+      }
+      // A valid but unconfigured profile has an intentionally empty library.
       if (enabledIds.length === 0) {
         return NextResponse.json(limit > 0 ? { videos: [], total: 0, hasMore: false } : []);
       }

@@ -105,7 +105,7 @@ function MasterLibrary() {
     setVideosLoading(true);
     try {
       const data = await fetch(
-        `/api/videos?channelId=${channelId}&includeHidden=true&includeShorts=true`
+        `/api/videos?all=1&channelId=${channelId}&includeHidden=true&includeShorts=true`
       ).then((r) => r.json());
       setVideos(Array.isArray(data) ? data : (data.videos ?? []));
     } catch {

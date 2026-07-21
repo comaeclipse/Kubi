@@ -11,6 +11,7 @@ import {
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { visibleChannel } from "@/lib/channel-visibility";
+import { getProfileChannelIds } from "@/lib/profile-content";
 
 const MAX_LIMIT = 20;
 const MAX_EXCLUSIONS = 200;
@@ -21,6 +22,14 @@ export async function POST(request: Request) {
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json().catch(() => ({}));
+    const allowedChannelIds = await getProfileChannelIds(auth.id, Number(body.profileId));
+    if (allowedChannelIds === null) {
+      return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
+    }
+    if (allowedChannelIds.length === 0) {
+      return NextResponse.json({ videos: [], eligibleCount: 0 });
+    }
+
     const requestedLimit = Number(body.limit);
     const limit = Math.min(
       MAX_LIMIT,
@@ -51,16 +60,12 @@ export async function POST(request: Request) {
     // Restrict to channels the caller may see. Private channels carry no labels
     // so wouldn't match music anyway, but guard explicitly — this route is not
     // otherwise enablement-scoped.
-    const visibleChannelIds = db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(visibleChannel(auth.id));
-
     const eligibility = and(
       eq(videos.source, "youtube"),
       eq(videos.hidden, false),
       eq(videos.isShort, false),
-      inArray(videos.channelId, visibleChannelIds),
+      inArray(videos.channelId, allowedChannelIds),
+      visibleChannel(auth.id),
       or(
         inArray(videos.channelId, musicChannelIds),
         inArray(videos.id, musicVideoIds)
@@ -96,7 +101,8 @@ export async function POST(request: Request) {
             eq(videos.source, "youtube"),
             eq(videos.hidden, false),
             eq(videos.isShort, false),
-            inArray(videos.channelId, visibleChannelIds),
+            inArray(videos.channelId, allowedChannelIds),
+            visibleChannel(auth.id),
             or(
               inArray(videos.channelId, musicChannelIds),
               inArray(videos.id, musicVideoIds)

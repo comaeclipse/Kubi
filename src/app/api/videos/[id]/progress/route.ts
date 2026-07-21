@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { videoProgress } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { videoProgress, videos } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 import { videoIdBlindIndex } from "@/lib/crypto";
 import { resolveYoutubeVideoId } from "@/lib/public-id";
+import { getProfileChannelIds } from "@/lib/profile-content";
+
+async function profileCanWatchVideo(
+  userId: number,
+  profileId: number,
+  youtubeVideoId: string
+) {
+  const allowedChannelIds = await getProfileChannelIds(userId, profileId);
+  if (!allowedChannelIds?.length) return false;
+  const [video] = await db
+    .select({ id: videos.id })
+    .from(videos)
+    .where(
+      and(
+        eq(videos.youtubeVideoId, youtubeVideoId),
+        inArray(videos.channelId, allowedChannelIds)
+      )
+    )
+    .limit(1);
+  return Boolean(video);
+}
 
 export async function GET(
   req: NextRequest,
@@ -23,6 +44,9 @@ export async function GET(
 
   const youtubeVideoId = await resolveYoutubeVideoId(slug);
   if (!youtubeVideoId) {
+    return NextResponse.json({ progressSeconds: 0 });
+  }
+  if (!(await profileCanWatchVideo(auth.id, parseInt(profileId), youtubeVideoId))) {
     return NextResponse.json({ progressSeconds: 0 });
   }
 
@@ -68,6 +92,9 @@ export async function POST(
   const youtubeVideoId = await resolveYoutubeVideoId(slug);
   if (!youtubeVideoId) {
     return NextResponse.json({ error: "Video not found" }, { status: 404 });
+  }
+  if (!(await profileCanWatchVideo(auth.id, profileId, youtubeVideoId))) {
+    return NextResponse.json({ error: "Video is not available to this profile" }, { status: 403 });
   }
 
   await db

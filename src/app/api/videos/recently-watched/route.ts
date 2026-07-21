@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress, videos, channels } from "@/db/schema";
-import { eq, and, gt, desc, count } from "drizzle-orm";
+import { eq, and, gt, desc, count, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
+import { getProfileChannelIds } from "@/lib/profile-content";
 
 const PAGE_SIZE = 12;
 
@@ -23,6 +24,10 @@ export async function GET(req: NextRequest) {
   if (!(await userOwnsProfile(auth.id, parseInt(profileId)))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const allowedChannelIds = await getProfileChannelIds(auth.id, parseInt(profileId));
+  if (!allowedChannelIds?.length) {
+    return NextResponse.json({ videos: [], total: 0, hasMore: false });
+  }
 
   const limit = parseInt(req.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE));
   const offset = parseInt(req.nextUrl.searchParams.get("offset") ?? "0");
@@ -31,7 +36,8 @@ export async function GET(req: NextRequest) {
     eq(videoProgress.profileId, parseInt(profileId)),
     gt(videoProgress.progressSeconds, 0),
     eq(videos.hidden, false),
-    eq(videos.isShort, false)
+    eq(videos.isShort, false),
+    inArray(videos.channelId, allowedChannelIds)
   );
 
   const [rows, totalResult] = await Promise.all([

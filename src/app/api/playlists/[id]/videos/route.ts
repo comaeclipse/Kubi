@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { playlistVideos } from "@/db/schema";
-import { eq, and, max } from "drizzle-orm";
+import { playlistVideos, videos } from "@/db/schema";
+import { eq, and, inArray, max } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsPlaylist } from "@/lib/ownership";
+import { getProfileChannelIds } from "@/lib/profile-content";
 
 export async function POST(
   request: Request,
@@ -14,7 +15,7 @@ export async function POST(
     if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;
-    const { videoId } = await request.json();
+    const { videoId, profileId } = await request.json();
     const playlistId = parseInt(id);
 
     if (!videoId) {
@@ -26,6 +27,19 @@ export async function POST(
 
     if (!(await userOwnsPlaylist(auth.id, playlistId))) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const allowedChannelIds = await getProfileChannelIds(auth.id, Number(profileId));
+    if (!allowedChannelIds?.length) {
+      return NextResponse.json({ error: "A valid profile with channel access is required" }, { status: 403 });
+    }
+    const [video] = await db
+      .select({ id: videos.id })
+      .from(videos)
+      .where(and(eq(videos.id, videoId), inArray(videos.channelId, allowedChannelIds)))
+      .limit(1);
+    if (!video) {
+      return NextResponse.json({ error: "Video is not available to this profile" }, { status: 403 });
     }
 
     // Get max position

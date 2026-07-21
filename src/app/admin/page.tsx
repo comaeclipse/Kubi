@@ -38,7 +38,7 @@ export default function AdminFamilyPage() {
 
       <Separator />
 
-      <ChannelToggleList />
+      <ChannelToggleList key={adminProfiles.map((profile) => profile.id).join(",")} />
 
       <Separator />
 

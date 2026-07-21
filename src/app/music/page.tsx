@@ -9,12 +9,14 @@ import {
 } from "@/components/music/music-player";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useProfile } from "@/context/profile-context";
 
 const BATCH_SIZE = 20;
 const REFILL_THRESHOLD = 5;
 const EXCLUSION_WINDOW = 200;
 
 export default function MusicPage() {
+  const { activeProfile } = useProfile();
   const [current, setCurrent] = useState<MusicQueueItem | null>(null);
   const [upcoming, setUpcoming] = useState<MusicQueueItem[]>([]);
   const [history, setHistory] = useState<MusicQueueItem[]>([]);
@@ -31,6 +33,7 @@ export default function MusicPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         limit: BATCH_SIZE,
+        profileId: activeProfile?.id,
         excludeVideoIds: excludeVideoIds.slice(-EXCLUSION_WINDOW),
       }),
     });
@@ -42,7 +45,7 @@ export default function MusicPage() {
       videos: MusicQueueItem[];
       eligibleCount: number;
     }>;
-  }, []);
+  }, [activeProfile?.id]);
 
   const loadInitialQueue = useCallback(async () => {
     setLoading(true);

@@ -57,7 +57,7 @@ export function AddToPlaylistDialog({
       const res = await fetch(`/api/playlists/${playlist.id}/videos`, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId }),
+        body: JSON.stringify({ videoId, profileId: activeProfile?.id }),
       });
       if (!res.ok) throw new Error();
 
@@ -97,7 +97,7 @@ export function AddToPlaylistDialog({
       await fetch(`/api/playlists/${playlist.id}/videos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId }),
+        body: JSON.stringify({ videoId, profileId: activeProfile?.id }),
       });
 
       setPlaylists((prev) => [

@@ -112,6 +112,26 @@ export const userChannels = pgTable(
   })
 );
 
+// Per-profile permissions within a parent's enabled channel library. A row is
+// required before a child profile can browse or play videos from that channel.
+// `userChannels` remains the account-wide parent library; this table narrows
+// that library for each child.
+export const profileChannels = pgTable(
+  "profile_channels",
+  {
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.profileId, table.channelId] }),
+  })
+);
+
 export const videos = pgTable(
   "videos",
   {

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { videos, channels, videoProgress, userChannels } from "@/db/schema";
+import { videos, channels, videoProgress } from "@/db/schema";
 import { eq, and, desc, ne, sql, inArray, or } from "drizzle-orm";
 import { requireUser, requireOperator } from "@/lib/auth";
 import { videoIdBlindIndex } from "@/lib/crypto";
 import { extractKeywords } from "@/lib/related-videos";
 import { buildEmbedUrl, resolveLibraryId } from "@/lib/bunny";
 import { visibleChannel } from "@/lib/channel-visibility";
+import { getProfileChannelIds } from "@/lib/profile-content";
 
 // Point Bunny videos at the signed-thumbnail redirect endpoint.
 function mapThumb<
@@ -30,21 +31,12 @@ export async function GET(
     const url = new URL(request.url);
     const profileId = url.searchParams.get("profileId");
 
-    // Non-operators may only watch videos from channels they've enabled.
-    let enabledIds: number[] = [];
-    if (!auth.isOperator) {
-      const rows = await db
-        .select({ channelId: userChannels.channelId })
-        .from(userChannels)
-        .where(eq(userChannels.userId, auth.id));
-      enabledIds = rows.map((r) => r.channelId);
+    const enabledIds = await getProfileChannelIds(auth.id, Number(profileId));
+    if (enabledIds === null) {
+      return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
     }
     const enabledFilter = (col: typeof videos.channelId) =>
-      auth.isOperator
-        ? undefined
-        : enabledIds.length > 0
-          ? inArray(col, enabledIds)
-          : sql`false`;
+      enabledIds.length > 0 ? inArray(col, enabledIds) : sql`false`;
 
     const progressJoinCondition = profileId
       ? and(
@@ -116,8 +108,9 @@ export async function GET(
       .leftJoin(videoProgress, progressJoinCondition)
       .where(
         and(
-          eq(videos.channelId, video.channelId),
-          eq(videos.hidden, false)
+            eq(videos.channelId, video.channelId),
+            eq(videos.hidden, false),
+            enabledFilter(videos.channelId)
         )
       )
       .orderBy(desc(videos.publishedAt))
@@ -177,7 +170,11 @@ export async function GET(
         .orderBy(sql`${score} DESC`)
         .limit(8);
 
-      suggestedRelated = scored.map(({ score: _, ...rest }) => rest);
+      suggestedRelated = scored.map((row) => {
+        const { score, ...rest } = row;
+        void score;
+        return rest;
+      });
     }
 
     // Build the (signed) Bunny embed URL for the main video, and rewrite Bunny

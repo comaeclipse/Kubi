@@ -329,7 +329,7 @@ function ManageVideosDialog({
     setLoading(true);
     try {
       const data = await fetch(
-        `/api/videos?channelId=${channel.id}&includeHidden=true&includeShorts=true`
+        `/api/videos?all=1&channelId=${channel.id}&includeHidden=true&includeShorts=true`
       ).then((r) => r.json());
       setVideos(Array.isArray(data) ? data : data.videos ?? []);
     } catch {
