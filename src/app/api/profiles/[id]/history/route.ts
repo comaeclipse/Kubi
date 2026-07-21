@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireUser } from "@/lib/auth";
+import { requireParent } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 
 // Clear all watch history for one of the account's own kid profiles, without
@@ -12,7 +12,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireUser();
+    const auth = await requireParent();
     if (auth instanceof NextResponse) return auth;
 
     const { id } = await params;

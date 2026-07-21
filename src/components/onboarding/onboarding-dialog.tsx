@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
+import { PinInput } from "@/components/parent/pin-input";
 import { PROFILE_COLORS } from "@/lib/profile-colors";
 import { useAuth } from "@/context/auth-context";
 import { useProfile } from "@/context/profile-context";
@@ -25,16 +26,23 @@ interface Channel {
   thumbnailUrl: string | null;
 }
 
-// First-run wizard. Step 1 sets up the parent's first kid profile (required);
-// step 2 shows the master channel library as a grid of greyed-out icons that
-// light up as the parent picks them. Renders only for signed-in accounts that
-// haven't onboarded yet. Channels are account-wide, so the profile step is
-// purely about getting at least one "who's watching" profile in place first.
+// First-run wizard. Step 1 sets the parent PIN that gates every parent screen
+// (it comes first because the very next step — creating a profile — is itself
+// a parent-only write); step 2 sets up the first kid profile (required); step 3
+// shows the master channel library as a grid of greyed-out icons that light up
+// as the parent picks them. Renders only for signed-in accounts that haven't
+// onboarded yet. Channels are account-wide, so the profile step is purely about
+// getting at least one "who's watching" profile in place first.
 export function OnboardingDialog() {
   const { user, loading, refresh } = useAuth();
   const { switchProfile, refreshProfiles } = useProfile();
 
-  const [step, setStep] = useState<"profile" | "channels">("profile");
+  const [step, setStep] = useState<"pin" | "profile" | "channels">("pin");
+
+  // PIN step
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [savingPin, setSavingPin] = useState(false);
 
   // Profile step
   const [name, setName] = useState("");
@@ -63,6 +71,31 @@ export function OnboardingDialog() {
       cancelled = true;
     };
   }, [needsOnboarding]);
+
+  const createPin = useCallback(async () => {
+    if (pin.length !== 4 || confirmPin.length !== 4) return;
+    if (pin !== confirmPin) {
+      toast.error("Those PINs don't match");
+      return;
+    }
+    setSavingPin(true);
+    try {
+      const res = await fetch("/api/parent-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      // Picks up hasPin + the unlock the POST just granted, which the profile
+      // step below needs (creating a profile is a parent-only write).
+      await refresh();
+      setStep("profile");
+    } catch {
+      toast.error("Couldn't save your PIN. Please try again.");
+    } finally {
+      setSavingPin(false);
+    }
+  }, [pin, confirmPin, refresh]);
 
   const createProfile = useCallback(async () => {
     const trimmed = name.trim();
@@ -133,7 +166,77 @@ export function OnboardingDialog() {
 
   if (loading || !needsOnboarding) return null;
 
-  if (step === "profile") {
+  // An account that already has a PIN (e.g. it was set, then onboarding was
+  // abandoned and resumed) skips straight past the first step.
+  const currentStep = step === "pin" && user?.hasPin ? "profile" : step;
+
+  if (currentStep === "pin") {
+    return (
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-md"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Set your parent PIN</DialogTitle>
+            <DialogDescription>
+              Pick a 4-digit PIN. You&apos;ll enter it to reach the parent
+              screens — profiles, time limits, blocked words, and which channels
+              your kids can watch — so they can&apos;t change their own settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            <div className="space-y-1.5">
+              <label htmlFor="onboarding-pin" className="text-sm font-medium">
+                PIN
+              </label>
+              <PinInput
+                id="onboarding-pin"
+                value={pin}
+                onChange={setPin}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="onboarding-confirm-pin"
+                className="text-sm font-medium"
+              >
+                Confirm PIN
+              </label>
+              <PinInput
+                id="onboarding-confirm-pin"
+                value={confirmPin}
+                onChange={setConfirmPin}
+                onEnter={createPin}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Forgot it later? You can reset it with your account password.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={createPin}
+              disabled={
+                savingPin || pin.length !== 4 || confirmPin.length !== 4
+              }
+              className="w-full"
+            >
+              {savingPin ? "Saving…" : "Continue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (currentStep === "profile") {
     return (
       <Dialog open onOpenChange={() => {}}>
         <DialogContent

@@ -46,6 +46,16 @@ export const users = pgTable("users", {
   // Operator-flagged demo accounts: hides the delete-account option in the UI
   // and blocks the DELETE /api/auth/account endpoint.
   isDemo: boolean("is_demo").notNull().default(false),
+  // bcrypt hash of the parent's 4-digit PIN, which gates every parent-only
+  // screen and write (profile management, the channel library, the account).
+  // Null = not set yet; the parent is prompted to create one the next time
+  // they open a gated screen. Never leaves the server — the API only ever
+  // exposes the derived `hasPin` boolean.
+  parentPinHash: text("parent_pin_hash"),
+  // Throttling for PIN entry. A 4-digit PIN is only 10k combinations, so
+  // consecutive failures lock entry for a few minutes; both reset on success.
+  pinFailedAttempts: integer("pin_failed_attempts").notNull().default(0),
+  pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
 });
 
 // Server-side sessions (revocable). The cookie stores the opaque `token`.

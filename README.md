@@ -15,6 +15,7 @@ It's a custom frontend: your child sees a clean, kid-friendly interface containi
 - **Hide individual videos** — Approve a channel but veto specific videos you don't want shown.
 - **Self-hosted video** — Add your own videos as "channels" via [Bunny Stream](https://bunny.net/) (e.g. home movies, downloaded content) alongside YouTube channels.
 - **Kid profiles** — Separate, colorful profiles per child, each with its own watch history and playlists.
+- **Parent PIN** — A 4-digit PIN set during onboarding gates every parent screen (profiles, time limits, blocked words, channel approvals, the account). Entering it unlocks them for 15 minutes; forgetting it is recoverable with the account password.
 - **Resume watching** — Watch progress is saved per profile, so kids pick up where they left off.
 - **Playlists** — Build curated playlists, including importing existing YouTube playlists.
 - **Encryption at rest** — Emails and kid profile names are AES-256-GCM encrypted in the database; email lookups use an HMAC blind index.

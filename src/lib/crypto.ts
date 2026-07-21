@@ -92,6 +92,26 @@ export function videoIdBlindIndex(youtubeVideoId: string): string {
     .digest("base64");
 }
 
+// Keyed signature over a cookie payload we hand to the browser and later trust
+// (the parent-PIN unlock ticket). Signing rather than storing a row keeps the
+// ticket stateless; the key never leaves the server, so it can't be forged.
+export function signPayload(payload: string): string {
+  return crypto
+    .createHmac("sha256", getKey())
+    .update(payload)
+    .digest("base64url");
+}
+
+export function verifyPayloadSignature(
+  payload: string,
+  signature: string
+): boolean {
+  const expected = Buffer.from(signPayload(payload));
+  const actual = Buffer.from(signature);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
+
 // Opaque, URL-safe token for sessions and email links.
 export function generateToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString("base64url");

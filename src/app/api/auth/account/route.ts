@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireUser, destroySession } from "@/lib/auth";
+import { requireParent, destroySession } from "@/lib/auth";
 
 // Deletes the authenticated user's account. Cascade constraints on the schema
 // remove sessions, profiles, playlists, user_channels, and email_tokens.
 export async function DELETE() {
   try {
-    const auth = await requireUser();
+    const auth = await requireParent();
     if (auth instanceof NextResponse) return auth;
 
     if (auth.isDemo) {

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { ProfileManager } from "@/components/admin/profile-manager";
+import { ParentGate } from "@/components/parent/parent-gate";
+import { ParentPinSettings } from "@/components/parent/parent-pin-settings";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,14 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
 export default function ProfilesPage() {
+  return (
+    <ParentGate>
+      <ProfilesPageContent />
+    </ParentGate>
+  );
+}
+
+function ProfilesPageContent() {
   const { profiles, refreshProfiles } = useProfile();
   const { user } = useAuth();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -45,6 +55,10 @@ export default function ProfilesPage() {
       </div>
 
       <ProfileManager profiles={profiles} onRefresh={refreshProfiles} />
+
+      <Separator />
+
+      <ParentPinSettings />
 
       <Separator />
 

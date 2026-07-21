@@ -42,6 +42,8 @@ export async function getInitialData(): Promise<InitialData> {
       trialEndsAt: current.trialEndsAt?.toISOString() ?? null,
       currentPeriodEndsAt: current.currentPeriodEndsAt?.toISOString() ?? null,
       hasAccess: current.hasAccess,
+      hasPin: current.hasPin,
+      pinUnlockedUntil: current.pinUnlockedUntil?.toISOString() ?? null,
     };
 
     const rows = await db

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { profiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { requireUser } from "@/lib/auth";
+import { requireParent, requireUser } from "@/lib/auth";
 import { encrypt, decryptLegacyCompatible } from "@/lib/crypto";
 
 export async function GET() {
@@ -32,7 +32,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireUser();
+    const auth = await requireParent();
     if (auth instanceof NextResponse) return auth;
 
     const { name, avatarColor } = await request.json();

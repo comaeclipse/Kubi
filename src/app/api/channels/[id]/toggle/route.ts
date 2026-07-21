@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, profileChannels, profiles, userChannels } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import { requireUser } from "@/lib/auth";
+import { requireParent } from "@/lib/auth";
 import { visibleChannel } from "@/lib/channel-visibility";
 
 // Enable a master-library channel for the current account.
@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireUser();
+    const auth = await requireParent();
     if (auth instanceof NextResponse) return auth;
 
     const channelId = parseInt((await params).id);
@@ -49,7 +49,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireUser();
+    const auth = await requireParent();
     if (auth instanceof NextResponse) return auth;
 
     const channelId = parseInt((await params).id);

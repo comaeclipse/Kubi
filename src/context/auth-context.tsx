@@ -22,6 +22,10 @@ export type AuthUser = {
   trialEndsAt: string | null; // ISO string from JSON
   currentPeriodEndsAt: string | null;
   hasAccess: boolean;
+  // Parent PIN gate: false until the parent creates a PIN. `pinUnlockedUntil`
+  // is the ISO expiry of the current unlock, or null while locked.
+  hasPin: boolean;
+  pinUnlockedUntil: string | null;
 };
 
 interface AuthContextValue {

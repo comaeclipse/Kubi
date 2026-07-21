@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { ProfileControls } from "@/components/profile/profile-controls";
+import { ParentGate } from "@/components/parent/parent-gate";
 import { Input } from "@/components/ui/input";
 import { useProfile } from "@/context/profile-context";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,18 @@ interface LibraryChannel {
 }
 
 export default function ManageProfilePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <ParentGate>
+      <ManageProfileContent params={params} />
+    </ParentGate>
+  );
+}
+
+function ManageProfileContent({
   params,
 }: {
   params: Promise<{ id: string }>;

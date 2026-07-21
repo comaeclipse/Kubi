@@ -3,7 +3,7 @@ import { and, eq, max } from "drizzle-orm";
 
 import { db } from "@/db";
 import { channels, profileChannels, userChannels } from "@/db/schema";
-import { requireUser } from "@/lib/auth";
+import { requireParent, requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 import { visibleChannel } from "@/lib/channel-visibility";
 
@@ -31,7 +31,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireUser();
+    const auth = await requireParent();
     if (auth instanceof NextResponse) return auth;
 
     const profileId = Number((await params).id);

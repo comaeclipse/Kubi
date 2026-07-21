@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { users, sessions } from "@/db/schema";
 import { eq, lt } from "drizzle-orm";
 import { decrypt, generateToken, hashToken } from "@/lib/crypto";
+import { getParentUnlockExpiry } from "@/lib/parent-pin";
 
 const SESSION_COOKIE = "session";
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
@@ -28,6 +29,11 @@ export type CurrentUser = {
   currentPeriodEndsAt: Date | null;
   // Derived: true if user has active trial or paid subscription (operators always true).
   hasAccess: boolean;
+  // Parent PIN gate. `hasPin` is false until the parent sets one (the hash
+  // itself is never exposed); `pinUnlockedUntil` is when the current unlock
+  // ticket expires, or null when the parent screens are locked.
+  hasPin: boolean;
+  pinUnlockedUntil: Date | null;
 };
 
 function computeHasAccess(u: {
@@ -93,6 +99,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       subscriptionStatus: users.subscriptionStatus,
       trialEndsAt: users.trialEndsAt,
       currentPeriodEndsAt: users.currentPeriodEndsAt,
+      parentPinHash: users.parentPinHash,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
@@ -122,6 +129,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       trialEndsAt: row.trialEndsAt,
       subscriptionStatus: row.subscriptionStatus,
     }),
+    hasPin: row.parentPinHash !== null,
+    pinUnlockedUntil: await getParentUnlockExpiry(row.id),
   };
 }
 
@@ -161,6 +170,23 @@ export async function requireUser(): Promise<CurrentUser | NextResponse> {
     return NextResponse.json({ error: "subscription_required" }, { status: 402 });
   }
   return user;
+}
+
+// Guard for parent-only writes (profile settings, the channel library, the
+// account). On top of requireUser it demands a live parent-PIN unlock, so a kid
+// who picks up an already-signed-in tablet can't reach these — including by
+// calling the API directly. The two error codes are distinct because the client
+// reacts differently: prompt to create a PIN vs prompt to enter it.
+export async function requireParent(): Promise<CurrentUser | NextResponse> {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+  if (!auth.hasPin) {
+    return NextResponse.json({ error: "pin_setup_required" }, { status: 403 });
+  }
+  if (!auth.pinUnlockedUntil) {
+    return NextResponse.json({ error: "pin_required" }, { status: 403 });
+  }
+  return auth;
 }
 
 export async function requireOperator(): Promise<CurrentUser | NextResponse> {
