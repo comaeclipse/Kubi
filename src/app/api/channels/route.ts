@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { channels, userChannels } from "@/db/schema";
+import { channels, profileChannels, userChannels } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import crypto from "crypto";
 import { requireUser, requireOperator } from "@/lib/auth";
@@ -11,16 +11,56 @@ import {
 import { DEFAULT_CDN_HOSTNAME, DEFAULT_LIBRARY_ID } from "@/lib/bunny";
 import { getChannelLabelMap } from "@/lib/taxonomy";
 import { visibleChannel } from "@/lib/channel-visibility";
+import { userOwnsProfile } from "@/lib/ownership";
 
-// GET /api/channels        -> channels this account has enabled (kid-facing)
-// GET /api/channels?all=1  -> the full master library annotated with `enabled`
-//                            (for the per-account toggle UI)
+function withCover<T extends { source: string; bunnyCoverVideoId: string | null; thumbnailUrl: string | null }>(
+  ch: T
+) {
+  return {
+    ...ch,
+    // For Bunny channels, expose the cover as a (server-signed) thumbnail
+    // URL derived from the chosen cover video.
+    thumbnailUrl:
+      ch.source === "bunny"
+        ? ch.bunnyCoverVideoId
+          ? `/api/bunny/thumbnail/${ch.bunnyCoverVideoId}`
+          : ch.thumbnailUrl
+        : ch.thumbnailUrl,
+  };
+}
+
+// GET /api/channels                  -> channels this account has enabled (kid-facing)
+// GET /api/channels?all=1            -> the full master library annotated with `enabled`
+//                                       (for the per-account toggle UI)
+// GET /api/channels?profileId=<id>   -> only this profile's approved channels,
+//                                       in that profile's own drag-to-reorder order
 export async function GET(request: Request) {
   try {
     const auth = await requireUser();
     if (auth instanceof NextResponse) return auth;
 
-    const all = new URL(request.url).searchParams.has("all");
+    const url = new URL(request.url);
+    const all = url.searchParams.has("all");
+    const profileIdParam = url.searchParams.get("profileId");
+
+    if (profileIdParam !== null) {
+      const profileId = Number(profileIdParam);
+      if (
+        !Number.isInteger(profileId) ||
+        !(await userOwnsProfile(auth.id, profileId))
+      ) {
+        return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      }
+
+      const rows = await db
+        .select({ channel: channels })
+        .from(profileChannels)
+        .innerJoin(channels, eq(channels.id, profileChannels.channelId))
+        .where(eq(profileChannels.profileId, profileId))
+        .orderBy(asc(profileChannels.sortOrder));
+
+      return NextResponse.json(rows.map((row) => withCover(row.channel)));
+    }
 
     // Master library + the caller's own private channels. Other users' (and the
     // operator's view of other users') private channels never appear here.

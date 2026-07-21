@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, max } from "drizzle-orm";
 
 import { db } from "@/db";
 import { channels, profileChannels, userChannels } from "@/db/schema";
@@ -58,9 +58,14 @@ export async function PATCH(
     }
 
     if (allowed) {
+      // New approvals land at the end of this profile's reorder list.
+      const [{ maxOrder } = { maxOrder: null }] = await db
+        .select({ maxOrder: max(profileChannels.sortOrder) })
+        .from(profileChannels)
+        .where(eq(profileChannels.profileId, profileId));
       await db
         .insert(profileChannels)
-        .values({ profileId, channelId })
+        .values({ profileId, channelId, sortOrder: (maxOrder ?? -1) + 1 })
         .onConflictDoNothing();
     } else {
       await db

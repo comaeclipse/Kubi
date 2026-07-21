@@ -14,10 +14,28 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { Home, Shield, ListMusic, History, Music2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useProfile } from "@/context/profile-context";
 import { useAuth } from "@/context/auth-context";
+import { cn } from "@/lib/utils";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface Channel {
   id: number;
@@ -33,19 +51,90 @@ interface Playlist {
   videoCount: number;
 }
 
+function SortableChannelItem({
+  channel,
+  isActive,
+  reorderable,
+  justDraggedRef,
+}: {
+  channel: Channel;
+  isActive: boolean;
+  reorderable: boolean;
+  justDraggedRef: React.MutableRefObject<number | null>;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: channel.id, disabled: !reorderable });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      data-slot="sidebar-menu-item"
+      data-sidebar="menu-item"
+      className="group/menu-item relative"
+    >
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        className={cn(
+          "!h-auto flex-col gap-1 py-2",
+          isDragging && "relative z-10 opacity-80"
+        )}
+      >
+        <Link
+          href={`/channel/${channel.youtubeChannelId}`}
+          title={channel.title}
+          className="flex flex-col items-center justify-center gap-1"
+          {...(reorderable ? { ...attributes, ...listeners } : {})}
+          onClick={(e) => {
+            if (justDraggedRef.current === channel.id) {
+              e.preventDefault();
+              justDraggedRef.current = null;
+            }
+          }}
+        >
+          <ChannelAvatar
+            title={channel.title}
+            thumbnailUrl={channel.thumbnailUrl}
+            className="h-16 w-16 flex-none rounded-full text-2xl"
+          />
+          <span className="w-16 truncate text-center text-[11px] text-muted-foreground">
+            {channel.title}
+          </span>
+        </Link>
+      </SidebarMenuButton>
+    </li>
+  );
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
-  const { activeProfile } = useProfile();
+  const { activeProfile, restoring } = useProfile();
   const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const justDraggedRef = useRef<number | null>(null);
+
+  // Reordering writes to the active profile's own sort order, so it's only
+  // available once a profile is selected (and thus scoping the channel list).
+  const reorderable = Boolean(activeProfile);
 
   useEffect(() => {
-    fetch("/api/channels")
+    // `restoring` is true until the last-active profile has been read back
+    // from localStorage; fetching before then could scope to the wrong
+    // profile (or none) and flash the wrong list.
+    if (restoring) return;
+    const profileParam = activeProfile ? `?profileId=${activeProfile.id}` : "";
+    fetch(`/api/channels${profileParam}`)
       .then((r) => r.json())
-      .then(setChannels)
+      .then((data) => setChannels(Array.isArray(data) ? data : []))
       .catch(() => {});
-  }, [pathname]);
+  }, [pathname, activeProfile?.id, restoring]);
 
   useEffect(() => {
     const profileParam = activeProfile ? `?profileId=${activeProfile.id}` : "";
@@ -54,6 +143,42 @@ export function AppSidebar() {
       .then((data) => setPlaylists(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, [pathname, activeProfile?.id]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over, delta } = event;
+      if (delta.x !== 0 || delta.y !== 0) {
+        justDraggedRef.current = active.id as number;
+      }
+      if (!over || active.id === over.id || !activeProfile) return;
+
+      setChannels((current) => {
+        const oldIndex = current.findIndex((c) => c.id === active.id);
+        const newIndex = current.findIndex((c) => c.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return current;
+
+        const reordered = arrayMove(current, oldIndex, newIndex);
+        fetch(`/api/profiles/${activeProfile.id}/channels/reorder`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channelIds: reordered.map((c) => c.id) }),
+        }).catch(() => {
+          setChannels(current);
+        });
+        return reordered;
+      });
+    },
+    [activeProfile]
+  );
 
   return (
     <Sidebar>
@@ -97,29 +222,28 @@ export function AppSidebar() {
         </div>
 
         <ScrollArea className="flex-1">
-          <SidebarMenu>
-            {channels.map((channel) => (
-              <SidebarMenuItem key={channel.id}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === `/channel/${channel.youtubeChannelId}`}
-                  className="!h-auto py-2"
-                >
-                  <Link
-                    href={`/channel/${channel.youtubeChannelId}`}
-                    title={channel.title}
-                    className="justify-center"
-                  >
-                    <ChannelAvatar
-                      title={channel.title}
-                      thumbnailUrl={channel.thumbnailUrl}
-                      className="h-16 w-16 flex-none rounded-full text-2xl"
-                    />
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={channels.map((c) => c.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <SidebarMenu>
+                {channels.map((channel) => (
+                  <SortableChannelItem
+                    key={channel.id}
+                    channel={channel}
+                    isActive={pathname === `/channel/${channel.youtubeChannelId}`}
+                    reorderable={reorderable}
+                    justDraggedRef={justDraggedRef}
+                  />
+                ))}
+              </SidebarMenu>
+            </SortableContext>
+          </DndContext>
         </ScrollArea>
 
         <div className="px-4 py-2">

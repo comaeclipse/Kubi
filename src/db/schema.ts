@@ -125,6 +125,9 @@ export const profileChannels = pgTable(
     channelId: integer("channel_id")
       .notNull()
       .references(() => channels.id, { onDelete: "cascade" }),
+    // Position of this channel in the profile's own drag-to-reorder list.
+    // Lower sorts first; new approvals are appended after the current max.
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
