@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -189,12 +190,18 @@ export function ProfileManager({ profiles, onRefresh }: ProfileManagerProps) {
               key={profile.id}
               className="flex items-center gap-3 rounded-lg border p-3"
             >
-              <ProfileAvatar
-                name={profile.name}
-                avatarColor={profile.avatarColor}
-                size="md"
-              />
-              <span className="font-medium flex-1">{profile.name}</span>
+              <Link
+                href={`/profiles/${profile.id}`}
+                className="flex flex-1 items-center gap-3 rounded-md -m-1 p-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title={`Manage ${profile.name}'s channels`}
+              >
+                <ProfileAvatar
+                  name={profile.name}
+                  avatarColor={profile.avatarColor}
+                  size="md"
+                />
+                <span className="font-medium">{profile.name}</span>
+              </Link>
               <Button
                 variant="ghost"
                 size="icon"
