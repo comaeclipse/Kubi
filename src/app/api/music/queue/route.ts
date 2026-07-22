@@ -29,7 +29,6 @@ export async function POST(request: Request) {
     if (rules.channelIds.length === 0) {
       return NextResponse.json({ videos: [], eligibleCount: 0 });
     }
-    const allowedChannelIds = rules.channelIds;
 
     const requestedLimit = Number(body.limit);
     const limit = Math.min(
@@ -65,7 +64,7 @@ export async function POST(request: Request) {
       eq(videos.source, "youtube"),
       eq(videos.hidden, false),
       eq(videos.isShort, false),
-      inArray(videos.channelId, allowedChannelIds),
+      rules.videoFilter,
       visibleChannel(auth.id),
       rules.titleFilter,
       or(
@@ -104,7 +103,7 @@ export async function POST(request: Request) {
             eq(videos.source, "youtube"),
             eq(videos.hidden, false),
             eq(videos.isShort, false),
-            inArray(videos.channelId, allowedChannelIds),
+            rules.videoFilter,
             visibleChannel(auth.id),
             rules.titleFilter,
             or(

@@ -1,14 +1,30 @@
-import { and, eq, ilike, not, type SQL } from "drizzle-orm";
+import { and, eq, ilike, inArray, not, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/db";
-import { profileChannels, profiles, userChannels, videos } from "@/db/schema";
+import {
+  profileChannels,
+  profileVideos,
+  profiles,
+  userChannels,
+  videos,
+} from "@/db/schema";
 
 export interface ProfileContentRules {
   /**
-   * Channels this profile may watch. Empty means a valid profile with an
+   * Every channel this profile may watch something from — whole channels and
+   * pick-some channels alike. Empty means a valid profile with an
    * intentionally empty library — distinct from `null` for an invalid profile.
+   * Use this for channel-level questions (which rails to show); it is NOT
+   * sufficient to scope a video query, because a channel in here may only be
+   * partially approved. Use `videoFilter` for that.
    */
   channelIds: number[];
+  /**
+   * The complete "may this profile watch this video" predicate over `videos`.
+   * Covers channel approval AND per-video selection, so every content query
+   * must apply this rather than filtering on `channelIds` itself.
+   */
+  videoFilter: SQL;
   /**
    * Excludes videos whose title contains one of the profile's blocked words.
    * `undefined` when nothing is blocked; drizzle drops undefined out of
@@ -36,10 +52,9 @@ export function blockedTitleFilter(keywords: string[]): SQL | undefined {
 }
 
 /**
- * Everything needed to scope a content query to one child: the channels the
- * parent approved for them, plus their blocked-word filter. Returns `null`
- * when the profile doesn't exist or belongs to another account, so callers can
- * fail closed.
+ * Everything needed to scope a content query to one child: which videos they
+ * may watch, plus their blocked-word filter. Returns `null` when the profile
+ * doesn't exist or belongs to another account, so callers can fail closed.
  */
 export async function getProfileContentRules(
   userId: number,
@@ -54,8 +69,13 @@ export async function getProfileContentRules(
     .limit(1);
   if (!profile) return null;
 
+  // Joined against userChannels so a channel the parent removed from the
+  // family library stops counting even if the per-profile row survives.
   const rows = await db
-    .select({ channelId: profileChannels.channelId })
+    .select({
+      channelId: profileChannels.channelId,
+      allVideos: profileChannels.allVideos,
+    })
     .from(profileChannels)
     .innerJoin(
       userChannels,
@@ -66,8 +86,30 @@ export async function getProfileContentRules(
     )
     .where(eq(profileChannels.profileId, profileId));
 
+  const wholeChannelIds = rows.filter((r) => r.allVideos).map((r) => r.channelId);
+  const pickedChannelIds = rows
+    .filter((r) => !r.allVideos)
+    .map((r) => r.channelId);
+
+  const clauses: SQL[] = [];
+  if (wholeChannelIds.length > 0) {
+    clauses.push(inArray(videos.channelId, wholeChannelIds));
+  }
+  if (pickedChannelIds.length > 0) {
+    // Belt and braces: the video must be individually picked AND belong to a
+    // channel that is still approved in pick-some mode.
+    clauses.push(
+      and(
+        inArray(videos.channelId, pickedChannelIds),
+        sql`EXISTS (SELECT 1 FROM ${profileVideos} WHERE ${profileVideos.profileId} = ${profileId} AND ${profileVideos.videoId} = ${videos.id})`
+      )!
+    );
+  }
+
   return {
     channelIds: rows.map((row) => row.channelId),
+    // No approvals at all: fail closed rather than matching everything.
+    videoFilter: clauses.length === 0 ? sql`false` : or(...clauses)!,
     titleFilter: blockedTitleFilter(profile.blockedKeywords ?? []),
   };
 }

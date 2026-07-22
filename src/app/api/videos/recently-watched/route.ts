@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress, videos, channels } from "@/db/schema";
-import { eq, and, gt, desc, count, inArray } from "drizzle-orm";
+import { eq, and, gt, desc, count } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 import { getProfileContentRules } from "@/lib/profile-content";
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     gt(videoProgress.progressSeconds, 0),
     eq(videos.hidden, false),
     eq(videos.isShort, false),
-    inArray(videos.channelId, rules.channelIds),
+    rules.videoFilter,
     rules.titleFilter
   );
 

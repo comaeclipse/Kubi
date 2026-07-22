@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { videos, channels, videoProgress } from "@/db/schema";
-import { eq, and, desc, ne, sql, inArray, or } from "drizzle-orm";
+import { eq, and, desc, ne, sql, or } from "drizzle-orm";
 import { requireUser, requireOperator } from "@/lib/auth";
 import { videoIdBlindIndex } from "@/lib/crypto";
 import { extractKeywords } from "@/lib/related-videos";
@@ -35,14 +35,10 @@ export async function GET(
     if (rules === null) {
       return NextResponse.json({ error: "A valid profile is required" }, { status: 403 });
     }
-    // Blocked titles fold into the same gate as channel access, so a blocked
-    // video is simply "not found" for this profile — on the watch page itself
-    // as well as in the two related-video rails below.
-    const enabledFilter = (col: typeof videos.channelId) =>
-      and(
-        rules.channelIds.length > 0 ? inArray(col, rules.channelIds) : sql`false`,
-        rules.titleFilter
-      );
+    // Blocked titles fold into the same gate as video access, so a blocked (or
+    // unpicked) video is simply "not found" for this profile — on the watch
+    // page itself as well as in the two related-video rails below.
+    const enabledFilter = and(rules.videoFilter, rules.titleFilter);
 
     const progressJoinCondition = profileId
       ? and(
@@ -81,7 +77,7 @@ export async function GET(
             eq(videos.publicId, id),
             and(eq(videos.source, "bunny"), eq(videos.youtubeVideoId, id))
           ),
-          enabledFilter(videos.channelId),
+          enabledFilter,
           // Blocks operators/other users from opening someone's private video.
           visibleChannel(auth.id)
         )
@@ -116,7 +112,7 @@ export async function GET(
         and(
             eq(videos.channelId, video.channelId),
             eq(videos.hidden, false),
-            enabledFilter(videos.channelId)
+            enabledFilter
         )
       )
       .orderBy(desc(videos.publishedAt))
@@ -168,7 +164,7 @@ export async function GET(
             ne(videos.channelId, video.channelId),
             eq(videos.hidden, false),
             eq(videos.isShort, false),
-            enabledFilter(videos.channelId),
+            enabledFilter,
             visibleChannel(auth.id),
             sql`(${sql.join(orConditions, sql` OR `)})`
           )

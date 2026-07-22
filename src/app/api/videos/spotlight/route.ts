@@ -37,6 +37,10 @@ export async function GET(request: Request) {
         and(
           eq(videos.channelId, channels.id),
           eq(videos.hidden, false),
+          // Counts only what this profile may actually watch, so a channel
+          // where only some videos are picked isn't spotlighted on the
+          // strength of videos the kid can't open.
+          rules.videoFilter,
           rules.titleFilter
         )
       )
@@ -74,6 +78,7 @@ export async function GET(request: Request) {
               and(
                 eq(videos.channelId, channel.id),
                 eq(videos.hidden, false),
+                rules.videoFilter,
                 rules.titleFilter
               )
             )

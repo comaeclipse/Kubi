@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq, min } from "drizzle-orm";
+import { and, asc, eq, inArray, min, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { channels, profileChannels, userChannels } from "@/db/schema";
+import { channels, profileChannels, profileVideos, userChannels, videos } from "@/db/schema";
 import { requireParent, requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 import { visibleChannel } from "@/lib/channel-visibility";
@@ -22,10 +22,40 @@ export async function GET(
   // Ordered by the profile's own sort, so the client can render the approved
   // list in the same order the kid sees — most recently approved first.
   const rows = await db
-    .select({ channelId: profileChannels.channelId })
+    .select({
+      channelId: profileChannels.channelId,
+      allVideos: profileChannels.allVideos,
+    })
     .from(profileChannels)
     .where(eq(profileChannels.profileId, profileId))
     .orderBy(asc(profileChannels.sortOrder));
+
+  // `?detail=1` adds each channel's whole-channel/pick-some state and how many
+  // videos are picked. The bare id array is kept as the default because other
+  // callers (the admin channel toggles) depend on that shape.
+  if (new URL(_request.url).searchParams.has("detail")) {
+    const counts = await db
+      .select({
+        channelId: videos.channelId,
+        count: sql<number>`count(*)`,
+      })
+      .from(profileVideos)
+      .innerJoin(videos, eq(videos.id, profileVideos.videoId))
+      .where(eq(profileVideos.profileId, profileId))
+      .groupBy(videos.channelId);
+    const countByChannel = new Map(
+      counts.map((row) => [row.channelId, Number(row.count)])
+    );
+
+    return NextResponse.json(
+      rows.map((row) => ({
+        channelId: row.channelId,
+        allVideos: row.allVideos,
+        selectedCount: countByChannel.get(row.channelId) ?? 0,
+      }))
+    );
+  }
+
   return NextResponse.json(rows.map((row) => row.channelId));
 }
 
@@ -76,6 +106,18 @@ export async function PATCH(
       await db
         .delete(profileChannels)
         .where(and(eq(profileChannels.profileId, profileId), eq(profileChannels.channelId, channelId)));
+      // Drop any per-video picks for this channel too. Access already requires
+      // the approval row above, so this is tidiness rather than a gate — but it
+      // stops a re-approval from silently resurrecting an old selection.
+      await db.delete(profileVideos).where(
+        and(
+          eq(profileVideos.profileId, profileId),
+          inArray(
+            profileVideos.videoId,
+            db.select({ id: videos.id }).from(videos).where(eq(videos.channelId, channelId))
+          )
+        )
+      );
     }
 
     return NextResponse.json({ allowed });

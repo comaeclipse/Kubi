@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { videoProgress, videos } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsProfile } from "@/lib/ownership";
 import { videoIdBlindIndex } from "@/lib/crypto";
@@ -21,7 +21,7 @@ async function profileCanWatchVideo(
     .where(
       and(
         eq(videos.youtubeVideoId, youtubeVideoId),
-        inArray(videos.channelId, rules.channelIds),
+        rules.videoFilter,
         rules.titleFilter
       )
     )

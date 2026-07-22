@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { playlistVideos, videos } from "@/db/schema";
-import { eq, and, inArray, max } from "drizzle-orm";
+import { eq, and, max } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { userOwnsPlaylist } from "@/lib/ownership";
 import { getProfileContentRules } from "@/lib/profile-content";
@@ -39,7 +39,7 @@ export async function POST(
       .where(
         and(
           eq(videos.id, videoId),
-          inArray(videos.channelId, rules.channelIds),
+          rules.videoFilter,
           rules.titleFilter
         )
       )

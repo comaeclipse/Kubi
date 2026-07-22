@@ -141,12 +141,38 @@ export const profileChannels = pgTable(
       .notNull()
       .references(() => channels.id, { onDelete: "cascade" }),
     // Position of this channel in the profile's own drag-to-reorder list.
-    // Lower sorts first; new approvals are appended after the current max.
+    // Lower sorts first; new approvals pop to the front (below the current min).
     sortOrder: integer("sort_order").notNull().default(0),
+    // True  = the whole channel, including uploads that arrive later.
+    // False = only the videos listed in `profileVideos` for this profile —
+    //         future uploads stay out until the parent picks them.
+    allVideos: boolean("all_videos").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.profileId, table.channelId] }),
+  })
+);
+
+// Per-video approvals, used only for channels where `profileChannels.allVideos`
+// is false. A row here grants nothing on its own: access is always
+// "channel is approved AND (whole channel OR this video is picked)", so
+// revoking a channel instantly closes off its videos even if these rows linger.
+export const profileVideos = pgTable(
+  "profile_videos",
+  {
+    profileId: integer("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    videoId: integer("video_id")
+      .notNull()
+      .references(() => videos.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.profileId, table.videoId] }),
   })
 );
 

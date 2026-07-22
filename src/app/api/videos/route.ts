@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { videos, channels, videoProgress } from "@/db/schema";
-import { eq, desc, and, sql, or, ilike, inArray, isNull } from "drizzle-orm";
+import { eq, desc, and, sql, or, ilike, isNull } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getVideoLabelMap } from "@/lib/taxonomy";
 import { visibleChannel } from "@/lib/channel-visibility";
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       if (rules.channelIds.length === 0) {
         return NextResponse.json(limit > 0 ? { videos: [], total: 0, hasMore: false } : []);
       }
-      conditions.push(inArray(videos.channelId, rules.channelIds));
+      conditions.push(rules.videoFilter);
       // Defense-in-depth: never surface another user's private channel.
       conditions.push(visibleChannel(auth.id));
       if (rules.titleFilter) conditions.push(rules.titleFilter);

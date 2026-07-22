@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
 import { ChannelSearch } from "@/components/channel/channel-search";
+import { ChannelVideoPicker } from "@/components/channel/channel-video-picker";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { ProfileControls } from "@/components/profile/profile-controls";
 import { ParentGate } from "@/components/parent/parent-gate";
@@ -27,6 +28,13 @@ interface YouTubeResult {
   description: string;
   thumbnailUrl: string;
   existingChannelId: number | null;
+}
+
+// How much of an approved channel this profile may watch.
+interface Approval {
+  channelId: number;
+  allVideos: boolean;
+  selectedCount: number;
 }
 
 export default function ManageProfilePage({
@@ -52,27 +60,43 @@ function ManageProfileContent({
 
   const [channels, setChannels] = useState<LibraryChannel[]>([]);
   // Ordered, not a Set: this is the profile's own channel order, newest first.
-  const [approvedIds, setApprovedIds] = useState<number[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
+  // Channel whose video picker is open, or null.
+  const [pickerChannelId, setPickerChannelId] = useState<number | null>(null);
 
+  const approvedIds = useMemo(
+    () => approvals.map((a) => a.channelId),
+    [approvals]
+  );
   const approvedSet = useMemo(() => new Set(approvedIds), [approvedIds]);
+  const approvalByChannel = useMemo(
+    () => new Map(approvals.map((a) => [a.channelId, a])),
+    [approvals]
+  );
+
+  const loadApprovals = useCallback(async () => {
+    const detail = await fetch(
+      `/api/profiles/${profileId}/channels?detail=1`
+    ).then((r) => r.json());
+    setApprovals(Array.isArray(detail) ? detail : []);
+  }, [profileId]);
 
   const load = useCallback(async () => {
     try {
       // `all=1` is the whole master library plus every channel this account can
       // see, each annotated with `enabled`.
-      const [channelData, approved] = await Promise.all([
+      const [channelData] = await Promise.all([
         fetch("/api/channels?all=1").then((r) => r.json()),
-        fetch(`/api/profiles/${profileId}/channels`).then((r) => r.json()),
+        loadApprovals(),
       ]);
       setChannels(Array.isArray(channelData) ? channelData : []);
-      setApprovedIds(Array.isArray(approved) ? approved : []);
     } catch {
       toast.error("Couldn't load channels");
     } finally {
       setLoading(false);
     }
-  }, [profileId]);
+  }, [loadApprovals]);
 
   useEffect(() => {
     if (!Number.isFinite(profileId)) return;
@@ -103,10 +127,13 @@ function ManageProfileContent({
 
   // Approve a channel we already hold, popping it to the front of the list.
   const approve = useCallback(
-    async (channel: LibraryChannel) => {
-      const previousApproved = approvedIds;
+    async (channel: LibraryChannel, openPicker = false) => {
+      const previousApprovals = approvals;
       const previousChannels = channels;
-      setApprovedIds((current) => [channel.id, ...current]);
+      setApprovals((current) => [
+        { channelId: channel.id, allVideos: true, selectedCount: 0 },
+        ...current.filter((a) => a.channelId !== channel.id),
+      ]);
 
       try {
         // Granting a channel the account hasn't enabled would be rejected by
@@ -129,36 +156,23 @@ function ManageProfileContent({
           body: JSON.stringify({ channelId: channel.id, allowed: true }),
         });
         if (!res.ok) throw new Error("Failed");
+        if (openPicker) setPickerChannelId(channel.id);
       } catch {
-        setApprovedIds(previousApproved);
+        setApprovals(previousApprovals);
         setChannels(previousChannels);
         toast.error(`Couldn't approve ${channel.title}`);
       }
     },
-    [approvedIds, channels, profileId]
+    [approvals, channels, profileId]
   );
 
-  // Revoking only unapproves for this child; the channel stays in the family
+  // Removal happens inside the picker (tapping an approved icon opens it
+  // rather than revoking, so a mis-tap can't wipe a child's channel). This
+  // just reconciles local state afterwards; the channel stays in the family
   // library because siblings may still be watching it.
-  const revoke = useCallback(
-    async (channel: LibraryChannel) => {
-      const previous = approvedIds;
-      setApprovedIds((current) => current.filter((id) => id !== channel.id));
-
-      try {
-        const res = await fetch(`/api/profiles/${profileId}/channels`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channelId: channel.id, allowed: false }),
-        });
-        if (!res.ok) throw new Error("Failed");
-      } catch {
-        setApprovedIds(previous);
-        toast.error(`Couldn't remove ${channel.title}`);
-      }
-    },
-    [approvedIds, profileId]
-  );
+  const handleRemoved = useCallback((channelId: number) => {
+    setApprovals((current) => current.filter((a) => a.channelId !== channelId));
+  }, []);
 
   // Add a channel found on YouTube. If we already hold it this is a silent
   // enable — the server never re-imports a channel it already has.
@@ -182,9 +196,9 @@ function ManageProfileContent({
           r.json()
         );
         setChannels(Array.isArray(channelData) ? channelData : []);
-        setApprovedIds((current) => [
-          data.channel.id,
-          ...current.filter((id) => id !== data.channel.id),
+        setApprovals((current) => [
+          { channelId: data.channel.id, allVideos: true, selectedCount: 0 },
+          ...current.filter((a) => a.channelId !== data.channel.id),
         ]);
 
         toast.success(
@@ -192,6 +206,10 @@ function ManageProfileContent({
             ? `Added ${data.channel.title}`
             : `Added ${data.channel.title} — ${data.imported} videos ready, more syncing`
         );
+
+        // Straight into the picker so the parent can take the whole channel or
+        // narrow it down to specific videos.
+        setPickerChannelId(data.channel.id);
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Couldn't add that channel"
@@ -264,7 +282,7 @@ function ManageProfileContent({
         <h2 className="text-lg font-semibold">Approved channels</h2>
         <p className="text-sm text-muted-foreground">
           What {profile?.name ?? "this profile"} can watch, newest first. Tap
-          one to remove it.
+          one to choose videos or remove it.
         </p>
         {loading ? (
           <p className="py-6 text-sm text-muted-foreground">Loading…</p>
@@ -277,7 +295,8 @@ function ManageProfileContent({
           <ChannelGrid
             channels={approvedChannels}
             approved
-            onSelect={revoke}
+            approvalByChannel={approvalByChannel}
+            onSelect={(channel) => setPickerChannelId(channel.id)}
           />
         )}
       </div>
@@ -294,9 +313,20 @@ function ManageProfileContent({
             Everything available is already approved.
           </p>
         ) : (
-          <ChannelGrid channels={popularChannels} onSelect={approve} />
+          <ChannelGrid
+            channels={popularChannels}
+            onSelect={(channel) => approve(channel, true)}
+          />
         )}
       </div>
+
+      <ChannelVideoPicker
+        profileId={profileId}
+        channelId={pickerChannelId}
+        onClose={() => setPickerChannelId(null)}
+        onSaved={() => loadApprovals()}
+        onRemoved={handleRemoved}
+      />
     </div>
   );
 }
@@ -304,20 +334,28 @@ function ManageProfileContent({
 function ChannelGrid({
   channels,
   approved = false,
+  approvalByChannel,
   onSelect,
 }: {
   channels: LibraryChannel[];
   approved?: boolean;
+  approvalByChannel?: Map<number, Approval>;
   onSelect: (channel: LibraryChannel) => void;
 }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] justify-items-center gap-x-3 gap-y-5">
-      {channels.map((channel) => (
+      {channels.map((channel) => {
+      const approval = approvalByChannel?.get(channel.id);
+      const partial = approval ? !approval.allVideos : false;
+      return (
         <button
           key={channel.id}
           type="button"
-          role="switch"
-          aria-checked={approved}
+          aria-label={
+            approved
+              ? `${channel.title} — choose videos`
+              : `Approve ${channel.title}`
+          }
           onClick={() => onSelect(channel)}
           title={channel.title}
           /* Fixed to the icon's width so the label below can never be
@@ -350,8 +388,17 @@ function ChannelGrid({
           >
             {channel.title}
           </span>
+          {/* Only shown for pick-some channels, so "whole channel" stays the
+              quiet default and a narrowed one is obvious at a glance. */}
+          {partial && (
+            <span className="block w-full truncate text-center text-[10px] text-muted-foreground">
+              {approval?.selectedCount} video
+              {approval?.selectedCount === 1 ? "" : "s"}
+            </span>
+          )}
         </button>
-      ))}
+      );
+      })}
     </div>
   );
 }

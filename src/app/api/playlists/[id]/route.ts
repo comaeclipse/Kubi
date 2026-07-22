@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { playlists, playlistVideos, videos, channels, videoProgress } from "@/db/schema";
-import { eq, and, asc, inArray, sql } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getProfileContentRules } from "@/lib/profile-content";
 
@@ -68,9 +68,7 @@ export async function GET(
       .where(
         and(
           eq(playlistVideos.playlistId, parseInt(id)),
-          rules.channelIds.length > 0
-            ? inArray(videos.channelId, rules.channelIds)
-            : sql`false`,
+          rules.videoFilter,
           rules.titleFilter
         )
       )
