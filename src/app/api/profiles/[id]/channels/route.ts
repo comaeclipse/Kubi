@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, max } from "drizzle-orm";
+import { and, asc, eq, min } from "drizzle-orm";
 
 import { db } from "@/db";
 import { channels, profileChannels, userChannels } from "@/db/schema";
@@ -19,10 +19,13 @@ export async function GET(
     return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   }
 
+  // Ordered by the profile's own sort, so the client can render the approved
+  // list in the same order the kid sees — most recently approved first.
   const rows = await db
     .select({ channelId: profileChannels.channelId })
     .from(profileChannels)
-    .where(eq(profileChannels.profileId, profileId));
+    .where(eq(profileChannels.profileId, profileId))
+    .orderBy(asc(profileChannels.sortOrder));
   return NextResponse.json(rows.map((row) => row.channelId));
 }
 
@@ -58,14 +61,16 @@ export async function PATCH(
     }
 
     if (allowed) {
-      // New approvals land at the end of this profile's reorder list.
-      const [{ maxOrder } = { maxOrder: null }] = await db
-        .select({ maxOrder: max(profileChannels.sortOrder) })
+      // New approvals pop to the FRONT of this profile's list, so a channel
+      // the parent just approved is the first thing they (and the kid) see
+      // rather than being appended out of sight.
+      const [{ minOrder } = { minOrder: null }] = await db
+        .select({ minOrder: min(profileChannels.sortOrder) })
         .from(profileChannels)
         .where(eq(profileChannels.profileId, profileId));
       await db
         .insert(profileChannels)
-        .values({ profileId, channelId, sortOrder: (maxOrder ?? -1) + 1 })
+        .values({ profileId, channelId, sortOrder: (minOrder ?? 0) - 1 })
         .onConflictDoNothing();
     } else {
       await db

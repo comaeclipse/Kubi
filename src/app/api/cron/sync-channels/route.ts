@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { channels, videos, settings } from "@/db/schema";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { fetchAllVideos, fetchVideoDetails } from "@/lib/youtube";
+import { importVideoPage } from "@/lib/channel-import";
 import { videoIdBlindIndex } from "@/lib/crypto";
 import { generatePublicId } from "@/lib/public-id";
 
@@ -18,12 +19,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Master library only — private channels aren't auto-synced (owner re-imports
-  // manually) to avoid burning YouTube quota on them.
-  const allChannels = await db
-    .select()
-    .from(channels)
-    .where(isNull(channels.ownerUserId));
+  // Every YouTube channel, master or household-owned. Owned channels used to
+  // be excluded to save quota, but channels added through search are owned,
+  // and leaving them unsynced would freeze them at whatever was imported on
+  // the day they were added. The cost is small: the known-ids early stop means
+  // an up-to-date channel is ~1 quota unit per run (search.list, at 100 units,
+  // is the expensive call — playlistItems.list is 1).
+  const allChannels = await db.select().from(channels);
 
   const results: { channelId: number; title: string; newVideos: number; skippedShorts: number; error?: string }[] = [];
 
@@ -104,6 +106,70 @@ export async function GET(request: Request) {
     }
   }
 
+  // --- Back-catalogue backfill ---------------------------------------------
+  // The loop above only ever finds videos NEWER than what we hold — it stops at
+  // the first known id. Channels added through search deliberately imported
+  // just their newest page, so their history has to be walked separately from
+  // a stored resume token. Bounded per channel so one 8,000-video catalogue
+  // can't consume the whole 5-minute cron budget; it simply resumes next run.
+  const MAX_BACKFILL_PAGES_PER_CHANNEL = 8;
+
+  const pendingBackfill = await db
+    .select({
+      id: channels.id,
+      title: channels.title,
+      uploadsPlaylistId: channels.uploadsPlaylistId,
+      backfillPageToken: channels.backfillPageToken,
+    })
+    .from(channels)
+    .where(isNotNull(channels.backfillPageToken));
+
+  const backfills: {
+    channelId: number;
+    title: string;
+    added: number;
+    done: boolean;
+    error?: string;
+  }[] = [];
+
+  for (const channel of pendingBackfill) {
+    if (!channel.uploadsPlaylistId || !channel.backfillPageToken) continue;
+    let token: string | null = channel.backfillPageToken;
+    let pages = 0;
+    let added = 0;
+    try {
+      while (token && pages < MAX_BACKFILL_PAGES_PER_CHANNEL) {
+        const page = await importVideoPage(
+          channel.id,
+          channel.uploadsPlaylistId,
+          token
+        );
+        added += page.imported;
+        token = page.nextPageToken;
+        pages++;
+      }
+      await db
+        .update(channels)
+        .set({ backfillPageToken: token })
+        .where(eq(channels.id, channel.id));
+      backfills.push({
+        channelId: channel.id,
+        title: channel.title,
+        added,
+        done: token === null,
+      });
+    } catch (error) {
+      // Leave the token untouched so the next run retries from the same point.
+      backfills.push({
+        channelId: channel.id,
+        title: channel.title,
+        added,
+        done: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
   const totalNew = results.reduce((sum, r) => sum + r.newVideos, 0);
   const totalShorts = results.reduce((sum, r) => sum + r.skippedShorts, 0);
 
@@ -112,7 +178,9 @@ export async function GET(request: Request) {
     ranAt: new Date().toISOString(),
     totalNewVideos: totalNew,
     totalShortsSkipped: totalShorts,
+    totalBackfilled: backfills.reduce((sum, b) => sum + b.added, 0),
     channels: results,
+    backfills,
   };
 
   try {

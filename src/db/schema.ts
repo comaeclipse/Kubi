@@ -101,6 +101,11 @@ export const channels = pgTable("channels", {
   ownerUserId: integer("owner_user_id").references(() => users.id, {
     onDelete: "cascade",
   }),
+  // Resume point for back-catalogue import. Channels added via search only
+  // pull their newest page up front (so they're usable in seconds); the sync
+  // cron walks older pages from this token until it runs out, then nulls it.
+  // Null therefore means "fully imported" OR "never needed backfilling".
+  backfillPageToken: text("backfill_page_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -325,6 +330,39 @@ export const videoProgress = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.profileId, table.videoIdHash] }),
+  })
+);
+
+// Cache of YouTube channel-search results, keyed by the normalized query.
+// search.list costs 100 quota units against a 10k/day budget — roughly 100
+// searches a day for the whole platform — so a repeated phrase must never hit
+// the API twice. Rows are served until `fetchedAt` ages past the TTL in
+// lib/youtube-search.ts.
+export const youtubeSearchCache = pgTable("youtube_search_cache", {
+  // Lowercased, whitespace-collapsed query text.
+  query: text("query").primaryKey(),
+  // JSON array of { channelId, title, thumbnailUrl }.
+  results: text("results").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// Per-account tally of uncached YouTube searches per local day, so one
+// household can't drain the shared daily quota for everyone else.
+export const youtubeSearchUsage = pgTable(
+  "youtube_search_usage",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // UTC calendar day as YYYY-MM-DD — the quota resets on Google's clock,
+    // not the household's.
+    usageDate: text("usage_date").notNull(),
+    searchCount: integer("search_count").notNull().default(0),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.usageDate] }),
   })
 );
 

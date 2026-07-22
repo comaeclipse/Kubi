@@ -2,14 +2,14 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Search, X } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { ChannelAvatar } from "@/components/channel/channel-avatar";
+import { ChannelSearch } from "@/components/channel/channel-search";
 import { ProfileAvatar } from "@/components/profile/profile-avatar";
 import { ProfileControls } from "@/components/profile/profile-controls";
 import { ParentGate } from "@/components/parent/parent-gate";
-import { Input } from "@/components/ui/input";
 import { useProfile } from "@/context/profile-context";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,14 @@ interface LibraryChannel {
   thumbnailUrl: string | null;
   /** Already in the parent's family library (user_channels). */
   enabled: boolean;
+}
+
+interface YouTubeResult {
+  channelId: string;
+  title: string;
+  description: string;
+  thumbnailUrl: string;
+  existingChannelId: number | null;
 }
 
 export default function ManageProfilePage({
@@ -43,37 +51,22 @@ function ManageProfileContent({
   const profile = profiles.find((p) => p.id === profileId) ?? null;
 
   const [channels, setChannels] = useState<LibraryChannel[]>([]);
-  const [approved, setApproved] = useState<Set<number>>(new Set());
+  // Ordered, not a Set: this is the profile's own channel order, newest first.
+  const [approvedIds, setApprovedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
+
+  const approvedSet = useMemo(() => new Set(approvedIds), [approvedIds]);
 
   const load = useCallback(async () => {
     try {
-      // `all=1` is the whole master library plus this parent's own private
-      // channels, each annotated with `enabled`. Channels outside the family
-      // library are shown too — approving one adds it on the way through.
-      const [channelData, approvedIds] = await Promise.all([
+      // `all=1` is the whole master library plus every channel this account can
+      // see, each annotated with `enabled`.
+      const [channelData, approved] = await Promise.all([
         fetch("/api/channels?all=1").then((r) => r.json()),
         fetch(`/api/profiles/${profileId}/channels`).then((r) => r.json()),
       ]);
-      const approvedSet = new Set<number>(
-        Array.isArray(approvedIds) ? approvedIds : []
-      );
-      const list: LibraryChannel[] = Array.isArray(channelData)
-        ? channelData
-        : [];
-      // Approved first, then everything else — alphabetical within each group.
-      // Sorted once here rather than on every render, so approving a channel
-      // doesn't make the grid reshuffle under the parent's finger mid-tap.
-      setChannels(
-        [...list].sort((a, b) => {
-          const aOn = approvedSet.has(a.id) ? 0 : 1;
-          const bOn = approvedSet.has(b.id) ? 0 : 1;
-          if (aOn !== bOn) return aOn - bOn;
-          return a.title.localeCompare(b.title);
-        })
-      );
-      setApproved(approvedSet);
+      setChannels(Array.isArray(channelData) ? channelData : []);
+      setApprovedIds(Array.isArray(approved) ? approved : []);
     } catch {
       toast.error("Couldn't load channels");
     } finally {
@@ -86,47 +79,127 @@ function ManageProfileContent({
     load();
   }, [load, profileId]);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return channels;
-    return channels.filter((c) => c.title.toLowerCase().includes(q));
-  }, [channels, query]);
+  const channelsById = useMemo(
+    () => new Map(channels.map((c) => [c.id, c])),
+    [channels]
+  );
 
-  async function toggleChannel(channel: LibraryChannel) {
-    const allow = !approved.has(channel.id);
-    const previous = approved;
-    const next = new Set(previous);
-    if (allow) next.add(channel.id);
-    else next.delete(channel.id);
-    setApproved(next);
+  // Approved, in the profile's order. Popular is everything else, alphabetical.
+  const approvedChannels = useMemo(
+    () =>
+      approvedIds
+        .map((id) => channelsById.get(id))
+        .filter((c): c is LibraryChannel => Boolean(c)),
+    [approvedIds, channelsById]
+  );
 
-    try {
-      // Granting a channel the account hasn't enabled would be rejected by the
-      // PATCH below, so adopt it into the family library first.
-      if (allow && !channel.enabled) {
-        const adopt = await fetch(`/api/channels/${channel.id}/toggle`, {
-          method: "POST",
+  const popularChannels = useMemo(
+    () =>
+      channels
+        .filter((c) => !approvedSet.has(c.id))
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    [channels, approvedSet]
+  );
+
+  // Approve a channel we already hold, popping it to the front of the list.
+  const approve = useCallback(
+    async (channel: LibraryChannel) => {
+      const previousApproved = approvedIds;
+      const previousChannels = channels;
+      setApprovedIds((current) => [channel.id, ...current]);
+
+      try {
+        // Granting a channel the account hasn't enabled would be rejected by
+        // the PATCH below, so adopt it into the family library first.
+        if (!channel.enabled) {
+          const adopt = await fetch(`/api/channels/${channel.id}/toggle`, {
+            method: "POST",
+          });
+          if (!adopt.ok) throw new Error("Failed");
+          setChannels((current) =>
+            current.map((c) =>
+              c.id === channel.id ? { ...c, enabled: true } : c
+            )
+          );
+        }
+
+        const res = await fetch(`/api/profiles/${profileId}/channels`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channelId: channel.id, allowed: true }),
         });
-        if (!adopt.ok) throw new Error("Failed");
-        setChannels((current) =>
-          current.map((c) => (c.id === channel.id ? { ...c, enabled: true } : c))
+        if (!res.ok) throw new Error("Failed");
+      } catch {
+        setApprovedIds(previousApproved);
+        setChannels(previousChannels);
+        toast.error(`Couldn't approve ${channel.title}`);
+      }
+    },
+    [approvedIds, channels, profileId]
+  );
+
+  // Revoking only unapproves for this child; the channel stays in the family
+  // library because siblings may still be watching it.
+  const revoke = useCallback(
+    async (channel: LibraryChannel) => {
+      const previous = approvedIds;
+      setApprovedIds((current) => current.filter((id) => id !== channel.id));
+
+      try {
+        const res = await fetch(`/api/profiles/${profileId}/channels`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channelId: channel.id, allowed: false }),
+        });
+        if (!res.ok) throw new Error("Failed");
+      } catch {
+        setApprovedIds(previous);
+        toast.error(`Couldn't remove ${channel.title}`);
+      }
+    },
+    [approvedIds, profileId]
+  );
+
+  // Add a channel found on YouTube. If we already hold it this is a silent
+  // enable — the server never re-imports a channel it already has.
+  const addFromYouTube = useCallback(
+    async (result: YouTubeResult) => {
+      try {
+        const res = await fetch(
+          `/api/profiles/${profileId}/channels/youtube`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ youtubeChannelId: result.channelId }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed");
+
+        // Re-read the library so a newly created channel appears with its real
+        // id and thumbnail, then pop it to the front.
+        const channelData = await fetch("/api/channels?all=1").then((r) =>
+          r.json()
+        );
+        setChannels(Array.isArray(channelData) ? channelData : []);
+        setApprovedIds((current) => [
+          data.channel.id,
+          ...current.filter((id) => id !== data.channel.id),
+        ]);
+
+        toast.success(
+          data.adopted
+            ? `Added ${data.channel.title}`
+            : `Added ${data.channel.title} — ${data.imported} videos ready, more syncing`
+        );
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Couldn't add that channel"
         );
       }
-
-      const res = await fetch(`/api/profiles/${profileId}/channels`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelId: channel.id, allowed: allow }),
-      });
-      if (!res.ok) throw new Error("Failed");
-    } catch {
-      setApproved(previous);
-      toast.error(`Couldn't update access to ${channel.title}`);
-    }
-  }
-
-  // Revoking here only unapproves for this child; the channel stays in the
-  // family library because siblings may still be watching it.
+    },
+    [profileId]
+  );
 
   if (profiles.length > 0 && !profile) {
     return (
@@ -164,8 +237,8 @@ function ManageProfileContent({
           <p className="text-sm text-muted-foreground">
             {loading
               ? "Loading channels…"
-              : `${approved.size} of ${channels.length} channel${
-                  channels.length === 1 ? "" : "s"
+              : `${approvedIds.length} channel${
+                  approvedIds.length === 1 ? "" : "s"
                 } approved`}
           </p>
         </div>
@@ -174,90 +247,111 @@ function ManageProfileContent({
       {profile && <ProfileControls profile={profile} />}
 
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Approved channels</h2>
+        <h2 className="text-lg font-semibold">Add channels</h2>
         <p className="text-sm text-muted-foreground">
-          Approved channels come first. Tap any greyed-out channel below them to
-          add it to {profile?.name ?? "this profile"}.
+          Search YouTube by name. Picking a channel approves it for{" "}
+          {profile?.name ?? "this profile"} straight away.
         </p>
+        <ChannelSearch
+          library={channels}
+          approvedIds={approvedSet}
+          onSelectLocal={approve}
+          onSelectYouTube={addFromYouTube}
+        />
       </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Search channels…"
-          className="h-9 pl-8 pr-8"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        {query && (
-          <button
-            className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
-            onClick={() => setQuery("")}
-            aria-label="Clear search"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Approved channels</h2>
+        <p className="text-sm text-muted-foreground">
+          What {profile?.name ?? "this profile"} can watch, newest first. Tap
+          one to remove it.
+        </p>
+        {loading ? (
+          <p className="py-6 text-sm text-muted-foreground">Loading…</p>
+        ) : approvedChannels.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">
+            No channels approved yet. Search above, or pick from Popular
+            channels below.
+          </p>
+        ) : (
+          <ChannelGrid
+            channels={approvedChannels}
+            approved
+            onSelect={revoke}
+          />
         )}
       </div>
 
-      {loading ? (
-        <p className="py-8 text-sm text-muted-foreground">Loading channels…</p>
-      ) : channels.length === 0 ? (
-        <p className="py-8 text-sm text-muted-foreground">
-          No channels are available yet. Check back soon.
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Popular channels</h2>
+        <p className="text-sm text-muted-foreground">
+          Channels other families use. Tap one to approve it.
         </p>
-      ) : visible.length === 0 ? (
-        <p className="py-8 text-sm text-muted-foreground">
-          No channels match “{query}”.
-        </p>
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] justify-items-center gap-y-5 gap-x-3">
-          {visible.map((channel) => {
-            const isApproved = approved.has(channel.id);
-            return (
-              <button
-                key={channel.id}
-                type="button"
-                role="switch"
-                aria-checked={isApproved}
-                onClick={() => toggleChannel(channel)}
-                title={channel.title}
-                /* Fixed to the icon's width so the label below can never be
-                   wider than the icon it belongs to. */
-                className="group w-20 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="relative block h-20 w-20">
-                  <ChannelAvatar
-                    title={channel.title}
-                    thumbnailUrl={channel.thumbnailUrl}
-                    className={cn(
-                      "h-20 w-20 rounded-xl text-2xl transition-all",
-                      isApproved
-                        ? "opacity-100 ring-2 ring-primary ring-offset-2 ring-offset-background"
-                        : "opacity-40 grayscale group-hover:opacity-70"
-                    )}
-                  />
-                  {isApproved && (
-                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3 w-3" strokeWidth={3} />
-                    </span>
-                  )}
-                </span>
-                {/* w-full == the 5rem button width == the icon width. */}
-                <span
-                  className={cn(
-                    "mt-1.5 block w-full truncate text-center text-xs transition-colors",
-                    isApproved ? "text-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  {channel.title}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+        {loading ? (
+          <p className="py-6 text-sm text-muted-foreground">Loading…</p>
+        ) : popularChannels.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">
+            Everything available is already approved.
+          </p>
+        ) : (
+          <ChannelGrid channels={popularChannels} onSelect={approve} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChannelGrid({
+  channels,
+  approved = false,
+  onSelect,
+}: {
+  channels: LibraryChannel[];
+  approved?: boolean;
+  onSelect: (channel: LibraryChannel) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] justify-items-center gap-x-3 gap-y-5">
+      {channels.map((channel) => (
+        <button
+          key={channel.id}
+          type="button"
+          role="switch"
+          aria-checked={approved}
+          onClick={() => onSelect(channel)}
+          title={channel.title}
+          /* Fixed to the icon's width so the label below can never be
+             wider than the icon it belongs to. */
+          className="group w-20 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <span className="relative block h-20 w-20">
+            <ChannelAvatar
+              title={channel.title}
+              thumbnailUrl={channel.thumbnailUrl}
+              className={cn(
+                "h-20 w-20 rounded-xl text-2xl transition-all",
+                approved
+                  ? "opacity-100 ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  : "opacity-40 grayscale group-hover:opacity-70"
+              )}
+            />
+            {approved && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <Check className="h-3 w-3" strokeWidth={3} />
+              </span>
+            )}
+          </span>
+          {/* w-full == the 5rem button width == the icon width. */}
+          <span
+            className={cn(
+              "mt-1.5 block w-full truncate text-center text-xs transition-colors",
+              approved ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            {channel.title}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

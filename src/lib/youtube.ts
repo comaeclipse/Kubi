@@ -110,6 +110,70 @@ export async function fetchChannelInfo(
   };
 }
 
+export interface ChannelSearchResult {
+  channelId: string;
+  title: string;
+  description: string;
+  thumbnailUrl: string;
+}
+
+// Searches YouTube for channels by name.
+//
+// COSTS 100 QUOTA UNITS PER CALL against a 10,000/day budget — about 100 calls
+// a day for the entire platform. Never call this directly from a request
+// handler; go through lib/youtube-search.ts, which caches and rate-limits.
+export async function searchChannels(
+  query: string,
+  maxResults = 8
+): Promise<ChannelSearchResult[]> {
+  const url = new URL(`${BASE_URL}/search`);
+  url.searchParams.set("part", "snippet");
+  url.searchParams.set("type", "channel");
+  url.searchParams.set("q", query);
+  url.searchParams.set("maxResults", String(maxResults));
+  url.searchParams.set("safeSearch", "strict");
+  url.searchParams.set("key", API_KEY);
+
+  const res = await fetch(url.toString());
+  const data = await res.json();
+
+  if (!res.ok) {
+    // Quota exhaustion arrives as 403 with reason quotaExceeded — surface it
+    // distinctly so the caller can tell "out of budget" from "broken".
+    const reason = data?.error?.errors?.[0]?.reason;
+    if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+      throw new Error("youtube_quota_exceeded");
+    }
+    throw new Error(data?.error?.message ?? "YouTube search failed");
+  }
+
+  if (!Array.isArray(data.items)) return [];
+
+  return data.items
+    .map(
+      (item: {
+        id?: { channelId?: string };
+        snippet?: {
+          title?: string;
+          description?: string;
+          thumbnails?: {
+            medium?: { url: string };
+            default?: { url: string };
+          };
+        };
+      }) => ({
+        channelId: item.id?.channelId ?? "",
+        title: item.snippet?.title ?? "",
+        description: item.snippet?.description ?? "",
+        thumbnailUrl:
+          item.snippet?.thumbnails?.medium?.url ||
+          item.snippet?.thumbnails?.default?.url ||
+          "",
+      })
+    )
+    .filter((c: ChannelSearchResult) => c.channelId && c.title);
+}
+
 export interface VideoPage {
   videos: VideoInfo[];
   nextPageToken: string | null;
