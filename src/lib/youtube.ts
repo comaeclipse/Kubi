@@ -368,31 +368,62 @@ export async function fetchVideoDetails(
     }
   }
 
-  // Anything longer than a Short can possibly be is settled without a probe.
-  // This also corrects the heuristic's #shorts-tag false positives: a 4-minute
-  // video tagged #shorts is not a Short, whatever its description claims.
-  const candidates: VideoDetails[] = [];
+  const flags = await resolveShortFlags(
+    results.map((r) => ({
+      youtubeVideoId: r.youtubeVideoId,
+      duration: r.duration,
+      fallback: r.isShort,
+    }))
+  );
   for (const result of results) {
-    const secs = isoToSeconds(result.duration);
-    if (secs > 0 && secs <= SHORTS_MAX_SECONDS) {
-      candidates.push(result);
-    } else {
-      result.isShort = false;
-    }
-  }
-
-  // Replace the duration guess with YouTube's own verdict wherever the probe
-  // gives one. Costs no API quota — it's a HEAD against youtube.com, not the
-  // Data API — so it stays clear of the 10k/day budget.
-  const verdicts = await probeShorts(candidates.map((r) => r.youtubeVideoId));
-  for (const result of candidates) {
-    const verdict = verdicts.get(result.youtubeVideoId);
-    if (verdict !== null && verdict !== undefined) {
-      result.isShort = verdict;
-    }
+    result.isShort = flags.get(result.youtubeVideoId) ?? result.isShort;
   }
 
   return results;
+}
+
+export interface ShortFlagCandidate {
+  youtubeVideoId: string;
+  duration: string;
+  // Verdict to keep when the probe reaches no conclusion.
+  fallback: boolean;
+}
+
+// Resolves the isShort flag for a set of videos using YouTube's own routing,
+// falling back per-item only where the probe returns no verdict.
+//
+// Split out from fetchVideoDetails so that callers which already hold durations
+// — a re-classification pass over an existing library, for instance — can reuse
+// the exact same classification without spending Data API quota to re-fetch
+// metadata they already have.
+export async function resolveShortFlags(
+  items: ShortFlagCandidate[]
+): Promise<Map<string, boolean>> {
+  const flags = new Map<string, boolean>();
+  const toProbe: string[] = [];
+
+  for (const item of items) {
+    const secs = isoToSeconds(item.duration);
+    if (secs > 0 && secs <= SHORTS_MAX_SECONDS) {
+      toProbe.push(item.youtubeVideoId);
+      flags.set(item.youtubeVideoId, item.fallback);
+    } else {
+      // Longer than any Short can be, or no duration at all (live streams).
+      // Settled without a probe — which also drops the heuristic's #shorts-tag
+      // false positives: a 4-minute video tagged #shorts is not a Short,
+      // whatever its description claims.
+      flags.set(item.youtubeVideoId, false);
+    }
+  }
+
+  // Costs no API quota — it's a HEAD against youtube.com, not the Data API —
+  // so it stays clear of the 10k/day budget.
+  const verdicts = await probeShorts(toProbe);
+  for (const [id, verdict] of verdicts) {
+    if (verdict !== null) flags.set(id, verdict);
+  }
+
+  return flags;
 }
 
 export function formatDuration(iso8601: string | null): string {

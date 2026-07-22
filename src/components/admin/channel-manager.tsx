@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AddChannelDialog } from "@/components/channel/add-channel-dialog";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { History, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { LabelPicker } from "@/components/admin/label-picker";
 import type { Label } from "@/lib/taxonomy";
@@ -27,6 +27,8 @@ interface ChannelManagerProps {
 
 export function ChannelManager({ channels, onRefresh, labels }: ChannelManagerProps) {
   const [syncingId, setSyncingId] = useState<number | null>(null);
+  const [backfillingId, setBackfillingId] = useState<number | null>(null);
+  const [backfillCount, setBackfillCount] = useState(0);
   // Bunny channels are managed separately in BunnyChannelManager.
   const youtubeChannels = channels.filter((c) => c.source !== "bunny");
 
@@ -42,6 +44,46 @@ export function ChannelManager({ channels, onRefresh, labels }: ChannelManagerPr
       toast.error(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setSyncingId(null);
+    }
+  }
+
+  // Sync only walks back as far as the newest video already stored, so it can
+  // never repair a channel whose original import stopped early. This walks the
+  // entire uploads playlist instead, one page of 50 per call, relying on the
+  // insert's onConflictDoNothing to skip everything already present.
+  async function handleBackfill(id: number, title: string) {
+    if (
+      !confirm(
+        `Re-import the full upload history for "${title}"?\n\nThis walks every page of the channel's uploads and adds anything missing. Existing videos are left alone.`
+      )
+    )
+      return;
+
+    setBackfillingId(id);
+    setBackfillCount(0);
+    try {
+      let pageToken: string | null = null;
+      let total = 0;
+
+      do {
+        const res: Response = await fetch(`/api/channels/${id}/import`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pageToken }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Import failed");
+        total += data.imported;
+        setBackfillCount(total);
+        pageToken = data.nextPageToken ?? null;
+      } while (pageToken);
+
+      toast.success(`Re-imported ${total} video(s) from ${title}`);
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Re-import failed");
+    } finally {
+      setBackfillingId(null);
     }
   }
 
@@ -103,12 +145,27 @@ export function ChannelManager({ channels, onRefresh, labels }: ChannelManagerPr
               <Button
                 variant="outline"
                 size="icon"
+                title="Sync new uploads"
                 onClick={() => handleSync(channel.id)}
-                disabled={syncingId === channel.id}
+                disabled={syncingId === channel.id || backfillingId === channel.id}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${syncingId === channel.id ? "animate-spin" : ""}`}
                 />
+              </Button>
+              <Button
+                variant="outline"
+                size={backfillingId === channel.id ? "sm" : "icon"}
+                title="Re-import full upload history"
+                onClick={() => handleBackfill(channel.id, channel.title)}
+                disabled={syncingId === channel.id || backfillingId === channel.id}
+              >
+                <History
+                  className={`h-4 w-4 ${backfillingId === channel.id ? "animate-spin" : ""}`}
+                />
+                {backfillingId === channel.id && (
+                  <span className="ml-1.5 tabular-nums">{backfillCount}</span>
+                )}
               </Button>
               <Button
                 variant="outline"
