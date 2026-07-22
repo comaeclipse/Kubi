@@ -56,6 +56,7 @@ function MasterLibrary() {
   const [selectedChannel, setSelectedChannel] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
   const [shortsExpanded, setShortsExpanded] = useState(false);
   const [sharedPlaylists, setSharedPlaylists] = useState<
     { id: number; name: string; profileId: number | null; videoCount: number }[]
@@ -159,18 +160,40 @@ function MasterLibrary() {
     }
   }
 
+  // Walks the library one batch at a time. The route reclassifies a fixed
+  // number of videos per call and hands back a cursor, so a large library can't
+  // push a single request past the function timeout.
   async function handleScanShorts() {
     setScanning(true);
+    setScanProgress(0);
     try {
-      const res = await fetch("/api/admin/scan-shorts", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      let cursor: number | null = null;
+      let scanned = 0;
+      let shortsFound = 0;
+      let changed = 0;
+
+      do {
+        const res: Response = await fetch("/api/admin/scan-shorts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cursor === null ? {} : { cursor }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        scanned += data.scanned;
+        shortsFound += data.shortsFound;
+        changed += data.changed;
+        cursor = data.nextCursor;
+        setScanProgress(scanned);
+      } while (cursor !== null);
+
       toast.success(
-        `Scanned ${data.scanned} videos — found ${data.shortsFound} Short${data.shortsFound !== 1 ? "s" : ""}`
+        `Scanned ${scanned} videos — ${shortsFound} Short${shortsFound !== 1 ? "s" : ""}, ${changed} reclassified`
       );
       // Only reload videos for the currently-selected channel, not everything
       await loadVideos(selectedChannel);
-      if (data.shortsFound > 0) setShortsExpanded(true);
+      if (shortsFound > 0) setShortsExpanded(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Scan failed");
     } finally {
@@ -233,7 +256,11 @@ function MasterLibrary() {
               <Scan
                 className={`h-4 w-4 mr-1.5 ${scanning ? "animate-pulse" : ""}`}
               />
-              {scanning ? "Scanning…" : "Scan for Shorts"}
+              {scanning
+                ? scanProgress > 0
+                  ? `Scanning… ${scanProgress}`
+                  : "Scanning…"
+                : "Scan for Shorts"}
             </Button>
           </div>
 

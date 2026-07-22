@@ -31,7 +31,86 @@ export function isoToSeconds(iso: string): number {
   );
 }
 
-function detectIsShort(duration: string, tags: string[], description: string): boolean {
+const SHORTS_PROBE_CONCURRENCY = 8;
+const SHORTS_PROBE_TIMEOUT_MS = 5000;
+const SHORTS_PROBE_ATTEMPTS = 3;
+
+// YouTube has never allowed a Short to run past 3 minutes (the cap was 60s
+// until late 2024). Anything longer is definitively a regular video, so it can
+// skip the probe entirely — on a full library re-scan that avoids the probe for
+// the large majority of rows.
+const SHORTS_MAX_SECONDS = 180;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Asks YouTube whether a video is a Short, rather than guessing from duration.
+//
+// /shorts/{id} serves the Shorts player (200) only for videos YouTube itself
+// classifies as Shorts; everything else 303s over to /watch?v={id}. That is the
+// same judgement YouTube's own UI makes, and duration cannot reproduce it in
+// either direction: a 9s ASL sign clip and a 16s Short are identical in length,
+// while Shorts have been allowed to run up to 3 minutes since late 2024. The
+// Data API v3 exposes no Shorts field at all, which is why this probe exists.
+//
+// Returns null when there is no trustworthy verdict (404 for deleted/private,
+// 429, 5xx, network failure) so the caller can fall back to the heuristic.
+async function probeIsShort(videoId: string): Promise<boolean | null> {
+  for (let attempt = 0; attempt < SHORTS_PROBE_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`https://www.youtube.com/shorts/${videoId}`, {
+        method: "HEAD",
+        redirect: "manual",
+        signal: AbortSignal.timeout(SHORTS_PROBE_TIMEOUT_MS),
+      });
+      if (res.status === 200) return true;
+      if (res.status >= 300 && res.status < 400) return false;
+      // Rate limiting and server errors are transient. Back off and retry
+      // rather than returning no verdict: falling back to the duration guess
+      // would silently misclassify legitimate short clips as Shorts, which is
+      // exactly the failure this probe exists to prevent.
+      if (res.status === 429 || res.status >= 500) {
+        await sleep(500 * 2 ** attempt);
+        continue;
+      }
+      // 404 and friends — the video is deleted or private. No verdict.
+      return null;
+    } catch {
+      // Network error or timeout.
+      await sleep(500 * 2 ** attempt);
+    }
+  }
+  return null;
+}
+
+// Probes a batch of ids with bounded concurrency. Values may be null (no verdict).
+async function probeShorts(
+  videoIds: string[]
+): Promise<Map<string, boolean | null>> {
+  const verdicts = new Map<string, boolean | null>();
+  let cursor = 0;
+
+  const workers = Array.from(
+    { length: Math.min(SHORTS_PROBE_CONCURRENCY, videoIds.length) },
+    async () => {
+      while (cursor < videoIds.length) {
+        const id = videoIds[cursor++];
+        verdicts.set(id, await probeIsShort(id));
+      }
+    }
+  );
+  await Promise.all(workers);
+
+  return verdicts;
+}
+
+// Fallback only, used when probeIsShort returns no verdict. Deliberately keeps
+// the old <=60s rule: it over-rejects legitimate short clips, but erring toward
+// rejection is correct for a platform that admits no Shorts at all.
+function detectIsShortByDuration(
+  duration: string,
+  tags: string[],
+  description: string
+): boolean {
   const secs = isoToSeconds(duration);
   // Duration must be > 0 (exclude live streams stored as P0D / PT0S)
   if (secs === 0) return false;
@@ -283,9 +362,33 @@ export async function fetchVideoDetails(
         results.push({
           youtubeVideoId: item.id,
           duration,
-          isShort: detectIsShort(duration, tags, description),
+          isShort: detectIsShortByDuration(duration, tags, description),
         });
       }
+    }
+  }
+
+  // Anything longer than a Short can possibly be is settled without a probe.
+  // This also corrects the heuristic's #shorts-tag false positives: a 4-minute
+  // video tagged #shorts is not a Short, whatever its description claims.
+  const candidates: VideoDetails[] = [];
+  for (const result of results) {
+    const secs = isoToSeconds(result.duration);
+    if (secs > 0 && secs <= SHORTS_MAX_SECONDS) {
+      candidates.push(result);
+    } else {
+      result.isShort = false;
+    }
+  }
+
+  // Replace the duration guess with YouTube's own verdict wherever the probe
+  // gives one. Costs no API quota — it's a HEAD against youtube.com, not the
+  // Data API — so it stays clear of the 10k/day budget.
+  const verdicts = await probeShorts(candidates.map((r) => r.youtubeVideoId));
+  for (const result of candidates) {
+    const verdict = verdicts.get(result.youtubeVideoId);
+    if (verdict !== null && verdict !== undefined) {
+      result.isShort = verdict;
     }
   }
 
