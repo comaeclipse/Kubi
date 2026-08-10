@@ -49,6 +49,7 @@ export function VideoPlayer({
   const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchRevealedControlsRef = useRef(false);
   const showControlsRef = useRef(true);
+  const isScrubbingRef = useRef(false);
   const startSecondsRef = useRef(startSeconds);
   const profileIdRef = useRef(profileId);
 
@@ -62,6 +63,7 @@ export function VideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isEnded, setIsEnded] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(containerRef);
 
@@ -119,6 +121,8 @@ export function VideoPlayer({
   const startProgressTracking = useCallback(() => {
     if (uiIntervalRef.current) clearInterval(uiIntervalRef.current);
     uiIntervalRef.current = setInterval(() => {
+      // While the user drags the seek bar, their position wins over the player's
+      if (isScrubbingRef.current) return;
       if (playerRef.current?.getCurrentTime && playerRef.current?.getDuration) {
         const time = playerRef.current.getCurrentTime();
         const dur = playerRef.current.getDuration();
@@ -234,18 +238,25 @@ export function VideoPlayer({
 
   // --- Custom controls ---
 
+  const restart = useCallback(() => {
+    if (!playerRef.current) return;
+    playerRef.current.seekTo(0, true);
+    playerRef.current.playVideo();
+    setIsEnded(false);
+    setProgress(0);
+    setCurrentTime(0);
+  }, []);
+
   const togglePlay = useCallback(() => {
     if (!playerRef.current) return;
     if (isEnded) {
-      playerRef.current.seekTo(0, true);
-      playerRef.current.playVideo();
-      setIsEnded(false);
+      restart();
     } else if (isPlaying) {
       playerRef.current.pauseVideo();
     } else {
       playerRef.current.playVideo();
     }
-  }, [isPlaying, isEnded]);
+  }, [isPlaying, isEnded, restart]);
 
   const toggleMute = useCallback(() => {
     if (!playerRef.current) return;
@@ -274,20 +285,52 @@ export function VideoPlayer({
     [isMuted]
   );
 
-  const handleProgressClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  // Seek by clicking anywhere on the bar, or by dragging the scrubber. During a
+  // drag we seek with allowSeekAhead=false so YouTube only shows preview frames;
+  // the final seek on release is the one that actually buffers.
+  const seekToClientX = useCallback(
+    (clientX: number, allowSeekAhead: boolean) => {
       if (!progressRef.current || !playerRef.current) return;
       const rect = progressRef.current.getBoundingClientRect();
-      const pct = Math.max(
-        0,
-        Math.min(1, (e.clientX - rect.left) / rect.width)
-      );
-      const seekTo = pct * duration;
-      playerRef.current.seekTo(seekTo, true);
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const seconds = pct * duration;
+      playerRef.current.seekTo(seconds, allowSeekAhead);
       setProgress(pct * 100);
-      setCurrentTime(seekTo);
+      setCurrentTime(seconds);
     },
     [duration]
+  );
+
+  const handleProgressPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      isScrubbingRef.current = true;
+      setIsScrubbing(true);
+      seekToClientX(e.clientX, false);
+    },
+    [seekToClientX]
+  );
+
+  const handleProgressPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isScrubbingRef.current) return;
+      e.preventDefault();
+      seekToClientX(e.clientX, false);
+    },
+    [seekToClientX]
+  );
+
+  const handleProgressPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isScrubbingRef.current) return;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      isScrubbingRef.current = false;
+      setIsScrubbing(false);
+      seekToClientX(e.clientX, true);
+    },
+    [seekToClientX]
   );
 
   useEffect(() => {
@@ -302,6 +345,7 @@ export function VideoPlayer({
     setShowControls(true);
     if (hideTimeout.current) clearTimeout(hideTimeout.current);
     hideTimeout.current = setTimeout(() => {
+      if (isScrubbingRef.current) return;
       touchRevealedControlsRef.current = false;
       setShowControls(false);
     }, TOUCH_CONTROLS_HIDE_MS);
@@ -363,14 +407,15 @@ export function VideoPlayer({
       {isEnded && (
         <div className="absolute inset-0 z-30 bg-black/85 flex flex-col items-center justify-center gap-4">
           <button
-            onClick={togglePlay}
+            onClick={restart}
             className="w-16 h-16 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+            aria-label="Start over"
           >
             <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
               <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
             </svg>
           </button>
-          <span className="text-white/70 text-sm">Replay</span>
+          <span className="text-white/70 text-sm">Start over</span>
         </div>
       )}
 
@@ -399,19 +444,35 @@ export function VideoPlayer({
 
         {/* Progress bar */}
         <div className="bg-black/90 px-3 pb-2">
+          {/* Padded hit area so the 3px track is easy to grab with a finger */}
           <div
-            ref={progressRef}
-            className="relative h-[3px] bg-white/30 cursor-pointer group/progress hover:h-[5px] transition-all mb-2"
-            onClick={handleProgressClick}
+            className="group/progress cursor-pointer touch-none py-2 -mt-1 mb-0.5"
+            onPointerDown={handleProgressPointerDown}
+            onPointerMove={handleProgressPointerMove}
+            onPointerUp={handleProgressPointerUp}
+            onPointerCancel={handleProgressPointerUp}
           >
             <div
-              className="absolute top-0 left-0 h-full bg-red-600 transition-[width] duration-150"
-              style={{ width: `${progress}%` }}
-            />
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-red-600 rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity"
-              style={{ left: `${progress}%`, marginLeft: "-6px" }}
-            />
+              ref={progressRef}
+              className={`relative bg-white/30 transition-all ${
+                isScrubbing ? "h-[5px]" : "h-[3px] group-hover/progress:h-[5px]"
+              }`}
+            >
+              <div
+                className={`absolute top-0 left-0 h-full bg-red-600 ${
+                  isScrubbing ? "" : "transition-[width] duration-150"
+                }`}
+                style={{ width: `${progress}%` }}
+              />
+              <div
+                className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-red-600 rounded-full transition-opacity ${
+                  isScrubbing
+                    ? "opacity-100"
+                    : "opacity-0 group-hover/progress:opacity-100"
+                }`}
+                style={{ left: `${progress}%`, marginLeft: "-6px" }}
+              />
+            </div>
           </div>
 
           {/* Controls row */}
@@ -432,6 +493,18 @@ export function VideoPlayer({
                   <path d="M8 5v14l11-7z" />
                 </svg>
               )}
+            </button>
+
+            {/* Start over */}
+            <button
+              onClick={restart}
+              className="p-1.5 hover:bg-white/10 rounded transition-colors"
+              aria-label="Start over"
+              title="Start over"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+              </svg>
             </button>
 
             {/* Volume */}
