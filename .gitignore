@@ -50,3 +50,8 @@ next-env.d.ts
 
 # one-off is_short reclassification artifacts (snapshot for revert, computed verdicts)
 is_short-*.json
+
+# Xcode
+**/xcuserdata/
+*.xcuserstate
+DerivedData/
