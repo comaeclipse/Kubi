@@ -32,6 +32,24 @@ const CONTROLS_HIDE_MS = 2500;
 const CONTROLS_LEAVE_MS = 800;
 const TOUCH_CONTROLS_HIDE_MS = 4000;
 
+const VOLUME_COOKIE_NAME = "kubi_video_volume";
+const VOLUME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+function getStoredVolume(): number | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${VOLUME_COOKIE_NAME}=(\\d+)`)
+  );
+  if (!match) return null;
+  const val = Number(match[1]);
+  return Number.isFinite(val) ? Math.max(0, Math.min(100, val)) : null;
+}
+
+function setStoredVolume(val: number) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${VOLUME_COOKIE_NAME}=${val}; path=/; max-age=${VOLUME_COOKIE_MAX_AGE}`;
+}
+
 export function VideoPlayer({
   youtubeVideoId,
   progressSlug,
@@ -55,7 +73,7 @@ export function VideoPlayer({
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(100);
+  const [volume, setVolume] = useState(() => getStoredVolume() ?? 100);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -165,6 +183,10 @@ export function VideoPlayer({
         onReady: () => {
           setIsReady(true);
           setDuration(playerRef.current?.getDuration() ?? 0);
+          const storedVolume = getStoredVolume();
+          if (storedVolume !== null) {
+            playerRef.current?.setVolume(storedVolume);
+          }
         },
         onStateChange: (event: YT.OnStateChangeEvent) => {
           if (event.data === window.YT.PlayerState.PLAYING) {
@@ -273,6 +295,7 @@ export function VideoPlayer({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = Number(e.target.value);
       setVolume(val);
+      setStoredVolume(val);
       playerRef.current?.setVolume(val);
       if (val === 0) {
         playerRef.current?.mute();
