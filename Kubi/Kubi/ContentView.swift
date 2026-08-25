@@ -146,7 +146,17 @@ private struct KubiWebView: UIViewRepresentable {
                 return
             }
 
-            if let scheme = url.scheme?.lowercased(), scheme != "http" && scheme != "https" {
+            // Let the web content and its embeds navigate freely. The YouTube
+            // player renders its video inside nested about:srcdoc / about:blank
+            // iframes; treating those as external links (and cancelling them)
+            // stops videos from ever loading. Only hand a URL off to another app
+            // when the MAIN frame itself opens a genuinely external scheme such
+            // as mailto:, tel:, or an itms-apps:// App Store link.
+            let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+            let webSchemes: Set<String> = ["http", "https", "about", "blob", "data"]
+            if isMainFrame,
+               let scheme = url.scheme?.lowercased(),
+               !webSchemes.contains(scheme) {
                 UIApplication.shared.open(url)
                 decisionHandler(.cancel)
                 return
