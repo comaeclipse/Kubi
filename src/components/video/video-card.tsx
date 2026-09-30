@@ -44,7 +44,13 @@ export function VideoCard({
       : 0;
 
   return (
-    <Link href={`/watch/${publicId ?? youtubeVideoId}`} className="group block">
+    <Link
+      href={`/watch/${publicId ?? youtubeVideoId}`}
+      // Feeds render hundreds of cards; viewport prefetch turned every card
+      // scrolled past into billed function + proxy invocations.
+      prefetch={false}
+      className="group block"
+    >
       <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
         {thumbnailUrl && !imgError ? (
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -85,6 +91,7 @@ export function VideoCard({
           {channelTitle && youtubeChannelId && (
             <Link
               href={`/channel/${youtubeChannelId}`}
+              prefetch={false}
               className="hover:underline"
               onClick={(e) => e.stopPropagation()}
             >

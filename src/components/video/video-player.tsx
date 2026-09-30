@@ -25,7 +25,9 @@ interface VideoPlayerProps {
   useNoCookieHost?: boolean;
 }
 
-const SAVE_INTERVAL_MS = 10_000;
+// Pause, end, unmount and tab close all save immediately, so this only bounds
+// how much resume position a crash can lose.
+const SAVE_INTERVAL_MS = 60_000;
 const NEAR_END_THRESHOLD_SECONDS = 10;
 const PROGRESS_TICK_MS = 250;
 const CONTROLS_HIDE_MS = 2500;
@@ -102,6 +104,8 @@ export function VideoPlayer({
         await fetch(`/api/videos/${progressSlug}/progress`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Lets the save outlive the page when it fires as the page hides or unmounts.
+          keepalive: true,
           body: JSON.stringify({
             seconds,
             profileId: profileIdRef.current,
@@ -216,6 +220,27 @@ export function VideoPlayer({
       },
     });
   }
+
+  // Closing the tab or backgrounding the iOS app doesn't unmount React, so
+  // save when the page hides too or the 60s interval could drop up to a minute.
+  useEffect(() => {
+    function handleHide() {
+      if (document.visibilityState !== "hidden") return;
+      const player = playerRef.current;
+      if (!player?.getCurrentTime || !saveIntervalRef.current) return;
+      const current = player.getCurrentTime();
+      const dur = player.getDuration();
+      saveProgress(
+        dur > 0 && current >= dur - NEAR_END_THRESHOLD_SECONDS ? 0 : current
+      );
+    }
+    window.addEventListener("pagehide", handleHide);
+    document.addEventListener("visibilitychange", handleHide);
+    return () => {
+      window.removeEventListener("pagehide", handleHide);
+      document.removeEventListener("visibilitychange", handleHide);
+    };
+  }, [saveProgress]);
 
   useEffect(() => {
     if (window.YT && window.YT.Player) {

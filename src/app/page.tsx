@@ -105,6 +105,7 @@ function HomeContent() {
               />
               <Link
                 href={`/channel/${spotlight.channelId}`}
+                prefetch={false}
                 className="font-semibold hover:underline"
               >
                 {spotlight.channelTitle}
@@ -181,6 +182,7 @@ function HomeContent() {
             <Link
               key={ch.youtubeChannelId}
               href={`/channel/${ch.youtubeChannelId}`}
+              prefetch={false}
               title={ch.title}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
