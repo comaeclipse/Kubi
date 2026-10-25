@@ -34,6 +34,29 @@ interface Video {
 const PAGE_SIZE = 12;
 const SCROLL_THRESHOLD = 400;
 
+// Where the viewer was on a channel page: the topmost visible card, how far
+// from the viewport top it sat, and how many videos were loaded. Pixel
+// offsets alone don't survive a revisit because the grid refetches from page
+// one, so we reload that many rows and line the same card back up.
+interface SavedScroll {
+  anchor: string;
+  top: number;
+  count: number;
+}
+
+function scrollKey(channelId: string, profileId: number | undefined) {
+  return `channel-scroll:${profileId ?? "none"}:${channelId}`;
+}
+
+function readSavedScroll(key: string): SavedScroll | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as SavedScroll) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ChannelPage() {
   const params = useParams<{ channelId: string }>();
   const { activeProfile, restoring: profileRestoring } = useProfile();
@@ -54,9 +77,15 @@ export default function ChannelPage() {
   // stop paging once the last page has loaded (otherwise scroll events + the
   // skeleton layout shift re-fire fetches in an infinite loop).
   const hasMoreRef = useRef(true);
+  const videoCountRef = useRef(0);
+  // Position to restore once the first load lands; saving stays off until
+  // then so the empty mid-load page doesn't overwrite it with "top".
+  const pendingRestoreRef = useRef<SavedScroll | null>(null);
+  const restoredRef = useRef(false);
+  const storageKey = scrollKey(params.channelId, activeProfile?.id);
 
   const fetchVideos = useCallback(
-    async (newOffset: number, append: boolean) => {
+    async (newOffset: number, append: boolean, limit = PAGE_SIZE) => {
       // Only paging is skipped while a request is open. A fresh load has to go
       // through, or a first page that arrives mid-flight is dropped and the
       // grid is stranded empty with nothing left to retrigger it.
@@ -68,7 +97,7 @@ export default function ChannelPage() {
       try {
         const pParam = activeProfile ? `&profileId=${activeProfile.id}` : "";
         const res = await fetch(
-          `/api/videos?channelId=${params.channelId}&limit=${PAGE_SIZE}&offset=${newOffset}${pParam}`
+          `/api/videos?channelId=${params.channelId}&limit=${limit}&offset=${newOffset}${pParam}`
         );
         const data = await res.json();
         if (requestId !== requestIdRef.current) return;
@@ -103,6 +132,15 @@ export default function ChannelPage() {
     setHasMore(true);
     hasMoreRef.current = true;
 
+    const saved = readSavedScroll(storageKey);
+    pendingRestoreRef.current = saved;
+    restoredRef.current = false;
+    // Load every row the viewer had scrolled through in one request, rounded
+    // up to a whole page so paging carries on from a page boundary.
+    const firstLimit = saved
+      ? Math.ceil(saved.count / PAGE_SIZE) * PAGE_SIZE
+      : PAGE_SIZE;
+
     Promise.all([
       fetch("/api/channels").then((r) => r.json()),
       fetch("/api/auth/status").then((r) => r.json()),
@@ -116,8 +154,74 @@ export default function ChannelPage() {
       })
       .catch(() => {});
 
-    fetchVideos(0, false).finally(() => setLoading(false));
-  }, [params.channelId, fetchVideos, profileRestoring]);
+    fetchVideos(0, false, Math.max(firstLimit, PAGE_SIZE)).finally(() =>
+      setLoading(false)
+    );
+  }, [params.channelId, fetchVideos, profileRestoring, storageKey]);
+
+  useEffect(() => {
+    videoCountRef.current = videos.length;
+  }, [videos]);
+
+  // Line the saved card back up once the first load has rendered. `loading`
+  // alone isn't enough: a superseded fetch still clears it while the grid is
+  // empty, and the grid also waits on the channel lookup.
+  useEffect(() => {
+    if (loading || !channel || videos.length === 0 || restoredRef.current)
+      return;
+    restoredRef.current = true;
+    const saved = pendingRestoreRef.current;
+    pendingRestoreRef.current = null;
+    if (!saved) return;
+    const el = document.querySelector<HTMLElement>(
+      `[data-video-id="${CSS.escape(saved.anchor)}"]`
+    );
+    if (!el) return;
+    const y = el.getBoundingClientRect().top + window.scrollY - saved.top;
+    window.scrollTo({ top: y, behavior: "instant" });
+  }, [loading, channel, videos]);
+
+  // Remember the topmost visible card as the viewer scrolls, and again on the
+  // tap that opens a video so a quick scroll-then-tap isn't lost.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function save() {
+      timer = undefined;
+      if (!restoredRef.current) return;
+      const cards = document.querySelectorAll<HTMLElement>("[data-video-id]");
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        if (rect.bottom > 0) {
+          const state: SavedScroll = {
+            anchor: card.dataset.videoId!,
+            top: rect.top,
+            count: videoCountRef.current,
+          };
+          try {
+            if (window.scrollY === 0) sessionStorage.removeItem(storageKey);
+            else sessionStorage.setItem(storageKey, JSON.stringify(state));
+          } catch {
+            // storage unavailable (private mode) — just don't remember
+          }
+          return;
+        }
+      }
+    }
+    function onScroll() {
+      if (!timer) timer = setTimeout(save, 100);
+    }
+    function onPointerDown() {
+      clearTimeout(timer);
+      save();
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pointerdown", onPointerDown, { capture: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pointerdown", onPointerDown, { capture: true });
+      clearTimeout(timer);
+    };
+  }, [storageKey]);
 
   // Scroll-based infinite loading
   useEffect(() => {
@@ -202,7 +306,9 @@ export default function ChannelPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {videos.map((video) => (
-            <VideoCard key={video.youtubeVideoId} {...video} />
+            <div key={video.youtubeVideoId} data-video-id={video.youtubeVideoId}>
+              <VideoCard {...video} />
+            </div>
           ))}
         </div>
       )}
