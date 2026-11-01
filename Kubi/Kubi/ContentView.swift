@@ -2,21 +2,36 @@ import SwiftUI
 import WebKit
 import Combine
 
-private let kubiURL = URL(string: "https://kubi.kids/")!
+private let kubiURL: URL = {
+    #if DEBUG
+    // `-KubiURL <url>` starts somewhere else on the site, for trying things
+    // on pages that don't need a Kubi sign-in.
+    if let override = UserDefaults.standard.string(forKey: "KubiURL"),
+       let url = URL(string: override) {
+        return url
+    }
+    #endif
+    return URL(string: "https://kubi.kids/")!
+}()
 
 @MainActor
 final class WebViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var errorMessage: String?
-    @Published var playback: PlaybackRequest?
+    @Published var isSigningIn = false
 
     fileprivate weak var webView: WKWebView?
+    fileprivate var player: InlinePlayerController?
 
     func reload() {
         errorMessage = nil
         if let webView {
             webView.reload()
         }
+    }
+
+    func signInFinished() {
+        player?.reload()
     }
 
     // The web player saves this against the signed-in profile, the same way it
@@ -64,19 +79,9 @@ struct ContentView: View {
                 .background(Color(uiColor: .systemBackground))
             }
         }
-        .fullScreenCover(item: $model.playback) { request in
-            NativePlayerView(request: request, onProgress: model.report)
+        .sheet(isPresented: $model.isSigningIn, onDismiss: model.signInFinished) {
+            YouTubeSignInView()
         }
-        #if DEBUG
-        .task {
-            // `-KubiPlayVideo <youtube id>` opens the player at launch, for
-            // trying it without the web app handing a video over.
-            if let videoId = UserDefaults.standard.string(forKey: "KubiPlayVideo"),
-               PlaybackRequest.isValidVideoId(videoId) {
-                model.playback = PlaybackRequest(videoId: videoId, title: "Test video", startSeconds: 0)
-            }
-        }
-        #endif
     }
 }
 
@@ -127,8 +132,11 @@ private struct KubiWebView: UIViewRepresentable {
             model.webView?.reload()
         }
 
-        // The web player posts {type: "play", videoId, title, startSeconds}
-        // instead of embedding YouTube itself when it runs inside the app.
+        // The web player drives the native one, all keyed by YouTube id:
+        //   play   {videoId, title, startSeconds, frame, covered}
+        //   layout {videoId, frame, covered}  when its box moves or is covered
+        //   close  {videoId}                  when the watch page goes away
+        // `frame` is the box in page coordinates.
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
@@ -136,16 +144,63 @@ private struct KubiWebView: UIViewRepresentable {
             guard message.frameInfo.isMainFrame,
                   message.frameInfo.securityOrigin.host == kubiURL.host,
                   let body = message.body as? [String: Any],
-                  body["type"] as? String == "play",
                   let videoId = body["videoId"] as? String,
-                  PlaybackRequest.isValidVideoId(videoId),
-                  model.playback?.videoId != videoId else { return }
+                  PlaybackRequest.isValidVideoId(videoId) else { return }
 
-            model.playback = PlaybackRequest(
-                videoId: videoId,
-                title: body["title"] as? String ?? "",
-                startSeconds: body["startSeconds"] as? Double ?? 0
+            let frame = Self.frame(from: body["frame"])
+            let covered = body["covered"] as? Bool ?? false
+
+            switch body["type"] as? String {
+            case "play":
+                if model.player?.videoId != videoId {
+                    startPlayer(PlaybackRequest(
+                        videoId: videoId,
+                        title: body["title"] as? String ?? "",
+                        startSeconds: body["startSeconds"] as? Double ?? 0
+                    ))
+                }
+                model.player?.update(frame: frame, covered: covered)
+            case "layout":
+                guard model.player?.videoId == videoId else { return }
+                model.player?.update(frame: frame, covered: covered)
+            case "close":
+                guard model.player?.videoId == videoId else { return }
+                closePlayer()
+            default:
+                break
+            }
+        }
+
+        private func startPlayer(_ request: PlaybackRequest) {
+            closePlayer()
+            guard let webView = model.webView else { return }
+            model.player = InlinePlayerController(
+                request: request,
+                hostWebView: webView,
+                onProgress: { [weak model] in model?.report($0) },
+                onSignIn: { [weak model] in model?.isSigningIn = true }
             )
+        }
+
+        private func closePlayer() {
+            model.player?.close()
+            model.player = nil
+        }
+
+        private static func frame(from value: Any?) -> CGRect? {
+            guard let frame = value as? [String: Any],
+                  let x = frame["x"] as? Double,
+                  let y = frame["y"] as? Double,
+                  let width = frame["width"] as? Double,
+                  let height = frame["height"] as? Double,
+                  width > 0, height > 0 else { return nil }
+            return CGRect(x: x, y: y, width: width, height: height)
+        }
+
+        // A new page replaces the one the player was laid over. A watch page
+        // asks for its player again once it loads.
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            closePlayer()
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -155,6 +210,20 @@ private struct KubiWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             finishLoading(webView)
+            #if DEBUG
+            // `-KubiPlayVideo <youtube id>` lays a player near the top of any
+            // page, for trying it without a watch page handing a video over.
+            if model.player == nil,
+               let videoId = UserDefaults.standard.string(forKey: "KubiPlayVideo"),
+               PlaybackRequest.isValidVideoId(videoId) {
+                startPlayer(PlaybackRequest(videoId: videoId, title: "Test video", startSeconds: 0))
+                let width = webView.bounds.width - 32
+                model.player?.update(
+                    frame: CGRect(x: 16, y: 120, width: width, height: width * 9 / 16),
+                    covered: false
+                )
+            }
+            #endif
         }
 
         func webView(

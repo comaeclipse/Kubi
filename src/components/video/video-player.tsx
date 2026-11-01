@@ -85,18 +85,61 @@ async function postProgress(
 // The Kubi iOS app registers this handler. Inside the app, an embed in this
 // page is a third-party frame, so WKWebView strips YouTube's cookies and every
 // play looks like a fresh visitor, which trips YouTube's bot check. The app
-// instead plays the video in its own screen where YouTube is first-party.
+// instead lays its own first-party player over this component's box.
 function nativePlayerBridge() {
   if (typeof window === "undefined") return null;
   return window.webkit?.messageHandlers?.kubiPlayer ?? null;
 }
 
 const NATIVE_PLAYER_EVENT = "kubi-native-player";
+// The native player can't follow page layout on its own, so the box's position
+// is re-measured on this beat and sent whenever it changes.
+const NATIVE_LAYOUT_POLL_MS = 250;
 
 interface NativePlayerProgress {
   videoId: string;
   seconds: number;
   duration: number;
+}
+
+interface NativePlayerLayout {
+  frame: { x: number; y: number; width: number; height: number };
+  covered: boolean;
+}
+
+// The box in page coordinates, which is where the app pins its player inside
+// the scrolling content, so it scrolls with the page for free.
+function measureNativeLayout(el: HTMLElement): NativePlayerLayout {
+  const rect = el.getBoundingClientRect();
+  return {
+    frame: {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    },
+    covered: isCovered(el, rect),
+  };
+}
+
+// The native player draws above every part of the page, so it has to step
+// aside (and pause) whenever a dialog or menu would sit on top of it, such as
+// the time-limit lockout.
+function isCovered(el: HTMLElement, rect: DOMRect) {
+  if (
+    document.querySelector(
+      '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]'
+    )
+  ) {
+    return true;
+  }
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+    return false;
+  }
+  const top = document.elementFromPoint(x, y);
+  return top !== null && !el.contains(top);
 }
 
 // The bridge is installed before the page loads and never changes.
@@ -127,25 +170,45 @@ function NativeVideoPlayer({
   startSeconds = 0,
   profileId,
 }: VideoPlayerProps) {
+  const boxRef = useRef<HTMLDivElement>(null);
   const positionRef = useRef(startSeconds);
 
   useEffect(() => {
     positionRef.current = startSeconds;
   }, [startSeconds]);
 
-  const open = useCallback(() => {
-    nativePlayerBridge()?.postMessage({
+  // Opening the watch page means "play this", so hand off right away, then keep
+  // the app's player lined up with the box until the page goes away.
+  useEffect(() => {
+    const box = boxRef.current;
+    const bridge = nativePlayerBridge();
+    if (!box || !bridge) return;
+
+    let last = measureNativeLayout(box);
+    bridge.postMessage({
       type: "play",
       videoId: youtubeVideoId,
       title,
       startSeconds: Math.floor(positionRef.current),
+      ...last,
     });
-  }, [youtubeVideoId, title]);
 
-  // Opening the watch page means "play this", so hand off right away.
-  useEffect(() => {
-    open();
-  }, [open]);
+    function sendLayoutIfChanged() {
+      if (!box || !bridge) return;
+      const next = measureNativeLayout(box);
+      if (JSON.stringify(next) === JSON.stringify(last)) return;
+      last = next;
+      bridge.postMessage({ type: "layout", videoId: youtubeVideoId, ...next });
+    }
+
+    const interval = setInterval(sendLayoutIfChanged, NATIVE_LAYOUT_POLL_MS);
+    window.addEventListener("resize", sendLayoutIfChanged);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("resize", sendLayoutIfChanged);
+      bridge.postMessage({ type: "close", videoId: youtubeVideoId });
+    };
+  }, [youtubeVideoId, title]);
 
   // The app reports the position on pause, end, close and every minute.
   useEffect(() => {
@@ -165,27 +228,19 @@ function NativeVideoPlayer({
     return () => window.removeEventListener(NATIVE_PLAYER_EVENT, handleProgress);
   }, [youtubeVideoId, progressSlug, profileId]);
 
+  // The app's player covers this box; the thumbnail only shows while it loads.
   return (
-    <button
-      type="button"
-      onClick={open}
-      className="relative block w-full aspect-video rounded-xl overflow-hidden bg-black"
-      aria-label={`Play ${title}`}
+    <div
+      ref={boxRef}
+      className="relative w-full aspect-video rounded-xl overflow-hidden bg-black"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`https://i.ytimg.com/vi/${youtubeVideoId}/hqdefault.jpg`}
-        alt=""
+        alt={title}
         className="absolute inset-0 w-full h-full object-cover"
       />
-      <span className="absolute inset-0 flex items-center justify-center">
-        <span className="w-[68px] h-[48px] bg-red-600 rounded-xl flex items-center justify-center">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </span>
-      </span>
-    </button>
+    </div>
   );
 }
 
