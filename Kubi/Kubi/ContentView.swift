@@ -8,6 +8,7 @@ private let kubiURL = URL(string: "https://kubi.kids/")!
 final class WebViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var errorMessage: String?
+    @Published var playback: PlaybackRequest?
 
     fileprivate weak var webView: WKWebView?
 
@@ -16,6 +17,21 @@ final class WebViewModel: ObservableObject {
         if let webView {
             webView.reload()
         }
+    }
+
+    // The web player saves this against the signed-in profile, the same way it
+    // saves progress from its own embed.
+    func report(_ progress: PlaybackProgress) {
+        let detail: [String: Any] = [
+            "videoId": progress.videoId,
+            "seconds": progress.seconds,
+            "duration": progress.duration,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: detail),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('kubi-native-player', { detail: \(json) }));"
+        )
     }
 }
 
@@ -48,6 +64,19 @@ struct ContentView: View {
                 .background(Color(uiColor: .systemBackground))
             }
         }
+        .fullScreenCover(item: $model.playback) { request in
+            NativePlayerView(request: request, onProgress: model.report)
+        }
+        #if DEBUG
+        .task {
+            // `-KubiPlayVideo <youtube id>` opens the player at launch, for
+            // trying it without the web app handing a video over.
+            if let videoId = UserDefaults.standard.string(forKey: "KubiPlayVideo"),
+               PlaybackRequest.isValidVideoId(videoId) {
+                model.playback = PlaybackRequest(videoId: videoId, title: "Test video", startSeconds: 0)
+            }
+        }
+        #endif
     }
 }
 
@@ -63,6 +92,7 @@ private struct KubiWebView: UIViewRepresentable {
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.websiteDataStore = .default()
+        configuration.userContentController.add(context.coordinator, name: "kubiPlayer")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -86,7 +116,7 @@ private struct KubiWebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         private let model: WebViewModel
 
         init(model: WebViewModel) {
@@ -95,6 +125,27 @@ private struct KubiWebView: UIViewRepresentable {
 
         @objc func refresh(_ sender: UIRefreshControl) {
             model.webView?.reload()
+        }
+
+        // The web player posts {type: "play", videoId, title, startSeconds}
+        // instead of embedding YouTube itself when it runs inside the app.
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == kubiURL.host,
+                  let body = message.body as? [String: Any],
+                  body["type"] as? String == "play",
+                  let videoId = body["videoId"] as? String,
+                  PlaybackRequest.isValidVideoId(videoId),
+                  model.playback?.videoId != videoId else { return }
+
+            model.playback = PlaybackRequest(
+                videoId: videoId,
+                title: body["title"] as? String ?? "",
+                startSeconds: body["startSeconds"] as? Double ?? 0
+            )
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

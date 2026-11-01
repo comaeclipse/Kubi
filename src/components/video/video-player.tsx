@@ -1,12 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useSyncExternalStore,
+} from "react";
 
 import { useFullscreen } from "@/hooks/use-fullscreen";
 
 declare global {
   interface Window {
     onYouTubeIframeAPIReady: () => void;
+    webkit?: {
+      messageHandlers?: {
+        kubiPlayer?: { postMessage: (message: unknown) => void };
+      };
+    };
   }
 }
 
@@ -52,7 +63,133 @@ function setStoredVolume(val: number) {
   document.cookie = `${VOLUME_COOKIE_NAME}=${val}; path=/; max-age=${VOLUME_COOKIE_MAX_AGE}`;
 }
 
-export function VideoPlayer({
+async function postProgress(
+  progressSlug: string,
+  profileId: number | undefined,
+  seconds: number
+) {
+  if (!profileId) return;
+  try {
+    await fetch(`/api/videos/${progressSlug}/progress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Lets the save outlive the page when it fires as the page hides or unmounts.
+      keepalive: true,
+      body: JSON.stringify({ seconds, profileId }),
+    });
+  } catch {
+    // Silently ignore network errors during progress saves
+  }
+}
+
+// The Kubi iOS app registers this handler. Inside the app, an embed in this
+// page is a third-party frame, so WKWebView strips YouTube's cookies and every
+// play looks like a fresh visitor, which trips YouTube's bot check. The app
+// instead plays the video in its own screen where YouTube is first-party.
+function nativePlayerBridge() {
+  if (typeof window === "undefined") return null;
+  return window.webkit?.messageHandlers?.kubiPlayer ?? null;
+}
+
+const NATIVE_PLAYER_EVENT = "kubi-native-player";
+
+interface NativePlayerProgress {
+  videoId: string;
+  seconds: number;
+  duration: number;
+}
+
+// The bridge is installed before the page loads and never changes.
+const subscribeToNothing = () => () => {};
+
+export function VideoPlayer(props: VideoPlayerProps) {
+  // Null on the server and during hydration, so both renders agree.
+  const useNative = useSyncExternalStore(
+    subscribeToNothing,
+    () => nativePlayerBridge() !== null,
+    () => null
+  );
+
+  if (useNative === null) {
+    return <div className="w-full aspect-video rounded-xl bg-black" />;
+  }
+  return useNative ? (
+    <NativeVideoPlayer {...props} />
+  ) : (
+    <WebVideoPlayer {...props} />
+  );
+}
+
+function NativeVideoPlayer({
+  youtubeVideoId,
+  progressSlug,
+  title,
+  startSeconds = 0,
+  profileId,
+}: VideoPlayerProps) {
+  const positionRef = useRef(startSeconds);
+
+  useEffect(() => {
+    positionRef.current = startSeconds;
+  }, [startSeconds]);
+
+  const open = useCallback(() => {
+    nativePlayerBridge()?.postMessage({
+      type: "play",
+      videoId: youtubeVideoId,
+      title,
+      startSeconds: Math.floor(positionRef.current),
+    });
+  }, [youtubeVideoId, title]);
+
+  // Opening the watch page means "play this", so hand off right away.
+  useEffect(() => {
+    open();
+  }, [open]);
+
+  // The app reports the position on pause, end, close and every minute.
+  useEffect(() => {
+    function handleProgress(event: Event) {
+      const { videoId, seconds, duration } = (
+        event as CustomEvent<NativePlayerProgress>
+      ).detail;
+      if (videoId !== youtubeVideoId) return;
+      const position =
+        duration > 0 && seconds >= duration - NEAR_END_THRESHOLD_SECONDS
+          ? 0
+          : seconds;
+      positionRef.current = position;
+      postProgress(progressSlug, profileId, position);
+    }
+    window.addEventListener(NATIVE_PLAYER_EVENT, handleProgress);
+    return () => window.removeEventListener(NATIVE_PLAYER_EVENT, handleProgress);
+  }, [youtubeVideoId, progressSlug, profileId]);
+
+  return (
+    <button
+      type="button"
+      onClick={open}
+      className="relative block w-full aspect-video rounded-xl overflow-hidden bg-black"
+      aria-label={`Play ${title}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`https://i.ytimg.com/vi/${youtubeVideoId}/hqdefault.jpg`}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      <span className="absolute inset-0 flex items-center justify-center">
+        <span className="w-[68px] h-[48px] bg-red-600 rounded-xl flex items-center justify-center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function WebVideoPlayer({
   youtubeVideoId,
   progressSlug,
   title,
@@ -98,23 +235,7 @@ export function VideoPlayer({
   // --- Progress saving (existing SafeVision logic) ---
 
   const saveProgress = useCallback(
-    async (seconds: number) => {
-      if (!profileIdRef.current) return;
-      try {
-        await fetch(`/api/videos/${progressSlug}/progress`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // Lets the save outlive the page when it fires as the page hides or unmounts.
-          keepalive: true,
-          body: JSON.stringify({
-            seconds,
-            profileId: profileIdRef.current,
-          }),
-        });
-      } catch {
-        // Silently ignore network errors during progress saves
-      }
-    },
+    (seconds: number) => postProgress(progressSlug, profileIdRef.current, seconds),
     [progressSlug]
   );
 
