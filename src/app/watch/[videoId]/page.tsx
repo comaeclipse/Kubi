@@ -86,6 +86,10 @@ export default function WatchPage() {
           title={video.title}
           startSeconds={startSeconds}
           profileId={activeProfile?.id}
+          // Anonymous nocookie embeds were hitting YouTube's "Sign in to
+          // confirm you're not a bot" challenge; the regular host can carry
+          // the viewer's YouTube session, which tends to clear it.
+          useNoCookieHost={false}
         />
       )}
       <div>
